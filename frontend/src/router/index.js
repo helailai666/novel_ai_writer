@@ -44,6 +44,24 @@ const routes = [
         name: 'ProjectWorld',
         component: () => import('@/views/WorldSettingView.vue'),
         meta: { title: '世界观设定' }
+      },
+      {
+        path: 'factions',
+        name: 'ProjectFactions',
+        component: () => import('@/views/FactionsView.vue'),
+        meta: { title: '势力管理' }
+      },
+      {
+        path: 'outline',
+        name: 'ProjectOutline',
+        component: () => import('@/views/OutlineView.vue'),
+        meta: { title: '大纲编辑' }
+      },
+      {
+        path: 'dashboard',
+        name: 'ProjectDashboard',
+        component: () => import('@/views/DashboardView.vue'),
+        meta: { title: '项目仪表盘' }
       }
     ]
   }

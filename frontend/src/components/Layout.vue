@@ -143,6 +143,9 @@ import {
   BookOutline,
   PeopleOutline,
   GlobeOutline,
+  BusinessOutline,
+  ListOutline,
+  StatsChartOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -199,6 +202,9 @@ const breadcrumbs = computed(() => {
       else if (paths[2] === 'review') items.push({ label: '🔍 审核' })
       else if (paths[2] === 'characters') items.push({ label: '🎭 角色' })
       else if (paths[2] === 'world') items.push({ label: '🌍 世界观' })
+      else if (paths[2] === 'factions') items.push({ label: '🏛️ 势力' })
+      else if (paths[2] === 'outline') items.push({ label: '📜 大纲' })
+      else if (paths[2] === 'dashboard') items.push({ label: '📊 仪表盘' })
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
     }
@@ -252,6 +258,21 @@ const projectMenuOptions = computed(() => {
   label: '世界观设定',
   key: `/projects/${id}/world`,
   icon: renderIcon(GlobeOutline),
+  },
+  {
+  label: '势力管理',
+  key: `/projects/${id}/factions`,
+  icon: renderIcon(BusinessOutline),
+  },
+  {
+  label: '大纲编辑器',
+  key: `/projects/${id}/outline`,
+  icon: renderIcon(ListOutline),
+  },
+  {
+  label: '项目仪表盘',
+  key: `/projects/${id}/dashboard`,
+  icon: renderIcon(StatsChartOutline),
   },
   ]
 })
