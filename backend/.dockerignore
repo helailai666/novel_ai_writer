@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# DB
+*.db-journal
+*.db-wal
+
+# Env (通过 docker-compose env_file 注入)
+.env
+
+# Test
+tests/
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db

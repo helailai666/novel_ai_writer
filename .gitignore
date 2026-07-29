@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+
+# 环境变量
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+frontend/dist/
+
+# SQLite 数据库
+*.db
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-data/
+
+# 日志
+*.log

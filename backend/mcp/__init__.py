@@ -1,0 +1,1 @@
+"""NovelAI Writer MCP Server"""
