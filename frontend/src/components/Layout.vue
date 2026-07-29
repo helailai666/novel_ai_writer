@@ -141,6 +141,7 @@ import {
   SettingsOutline,
   SearchOutline,
   BookOutline,
+  PeopleOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -195,6 +196,7 @@ const breadcrumbs = computed(() => {
       })
       if (paths[2] === 'settings') items.push({ label: '⚙️ 设定' })
       else if (paths[2] === 'review') items.push({ label: '🔍 审核' })
+      else if (paths[2] === 'characters') items.push({ label: '🎭 角色' })
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
     }
@@ -239,6 +241,11 @@ const projectMenuOptions = computed(() => {
       key: `/projects/${id}/review`,
       icon: renderIcon(SearchOutline),
     },
+  {
+  label: '角色管理',
+  key: `/projects/${id}/characters`,
+  icon: renderIcon(PeopleOutline),
+  },
   ]
 })
 

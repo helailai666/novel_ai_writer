@@ -32,6 +32,12 @@ const routes = [
         name: 'ProjectReview',
         component: () => import('@/views/ReviewView.vue'),
         meta: { title: '审核视图' }
+      },
+      {
+        path: 'characters',
+        name: 'ProjectCharacters',
+        component: () => import('@/views/CharactersView.vue'),
+        meta: { title: '角色管理' }
       }
     ]
   }

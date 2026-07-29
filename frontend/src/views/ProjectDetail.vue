@@ -3,6 +3,7 @@
     <n-page-header @back="$router.push('/projects')">
       <template #title>📖 {{ project?.title || '加载中...' }}</template>
       <template #extra>
+        <n-button size="small" @click="$router.push(`/projects/${$route.params.id}/characters`)">🎭 角色</n-button>
         <n-button size="small" @click="$router.push(`/projects/${$route.params.id}/settings`)">⚙️ 设定</n-button>
         <n-button size="small" style="margin-left:8px" @click="$router.push(`/projects/${$route.params.id}/review`)">🔍 审核</n-button>
       </template>
