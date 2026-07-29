@@ -142,6 +142,7 @@ import {
   SearchOutline,
   BookOutline,
   PeopleOutline,
+  GlobeOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -197,6 +198,7 @@ const breadcrumbs = computed(() => {
       if (paths[2] === 'settings') items.push({ label: '⚙️ 设定' })
       else if (paths[2] === 'review') items.push({ label: '🔍 审核' })
       else if (paths[2] === 'characters') items.push({ label: '🎭 角色' })
+      else if (paths[2] === 'world') items.push({ label: '🌍 世界观' })
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
     }
@@ -245,6 +247,11 @@ const projectMenuOptions = computed(() => {
   label: '角色管理',
   key: `/projects/${id}/characters`,
   icon: renderIcon(PeopleOutline),
+  },
+  {
+  label: '世界观设定',
+  key: `/projects/${id}/world`,
+  icon: renderIcon(GlobeOutline),
   },
   ]
 })

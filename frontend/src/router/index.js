@@ -38,6 +38,12 @@ const routes = [
         name: 'ProjectCharacters',
         component: () => import('@/views/CharactersView.vue'),
         meta: { title: '角色管理' }
+      },
+      {
+        path: 'world',
+        name: 'ProjectWorld',
+        component: () => import('@/views/WorldSettingView.vue'),
+        meta: { title: '世界观设定' }
       }
     ]
   }
