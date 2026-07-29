@@ -98,7 +98,7 @@ async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{project_id}/export")
-async def export_project(project_id: str, format: str = Query("md", regex="^(md|txt)$"), db: AsyncSession = Depends(get_db)):
+async def export_project(project_id: str, format: str = Query("md", pattern="^(md|txt)$"), db: AsyncSession = Depends(get_db)):
     """导出小说为 Markdown 或纯文本"""
     project = await _get_or_404(project_id, db)
 
