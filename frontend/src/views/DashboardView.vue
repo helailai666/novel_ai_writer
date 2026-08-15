@@ -62,6 +62,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { projectAPI, writingAPI, settingsAPI } from '../api/index.js'
 
 const route = useRoute()
 const pid = () => route.params.id
@@ -103,20 +104,35 @@ const todos = ref([
 async function loadData() {
   loading.value = true
   try {
-    // 模拟从多个 API 聚合数据
-    await new Promise(r => setTimeout(r, 800))
+    const [chaptersRes, charactersRes, worldRes, factionsRes] = await Promise.all([
+      writingAPI.getChapters(pid()).catch(() => ({ data: [] })),
+      settingsAPI.getCharacters(pid()).catch(() => ({ data: [] })),
+      settingsAPI.getWorldSettings(pid()).catch(() => ({ data: [] })),
+      settingsAPI.getFactions(pid()).catch(() => ({ data: [] })),
+    ])
+
+    const chapters = chaptersRes.data || []
+    const characters = charactersRes.data || []
+    const world = worldRes.data || []
+    const factions = factionsRes.data || []
+
     statCards.value = [
-      { label: '📖 章节数', value: '12', sub: '总章节', color: '#e94560' },
-      { label: '🎭 角色数', value: '8', sub: '已创建', color: '#18a058' },
-      { label: '🌍 世界观', value: '6', sub: '条目', color: '#2080f0' },
-      { label: '🏛️ 势力数', value: '4', sub: '阵营', color: '#f0a020' },
+      { label: '📖 章节数', value: String(chapters.length), sub: '总章节', color: '#e94560' },
+      { label: '🎭 角色数', value: String(characters.length), sub: '已创建', color: '#18a058' },
+      { label: '🌍 世界观', value: String(world.length), sub: '条目', color: '#2080f0' },
+      { label: '🏛️ 势力数', value: String(factions.length), sub: '阵营', color: '#f0a020' },
     ]
+
+    const totalChapters = Math.max(chapters.length, 10)
+    const doneChapters = chapters.filter(c => c.status === 'done').length
     progressItems.value = [
-      { label: '章节创作', current: 3, total: 12, pct: 25, color: '#e94560' },
-      { label: '角色设定', current: 5, total: 8, pct: 62, color: '#18a058' },
-      { label: '世界观', current: 4, total: 6, pct: 66, color: '#2080f0' },
-      { label: '势力', current: 2, total: 4, pct: 50, color: '#f0a020' },
+      { label: '章节创作', current: doneChapters, total: totalChapters, pct: Math.round(doneChapters / totalChapters * 100), color: '#e94560' },
+      { label: '角色设定', current: characters.length, total: Math.max(characters.length, 5), pct: characters.length > 0 ? 100 : 0, color: '#18a058' },
+      { label: '世界观', current: world.length, total: Math.max(world.length, 4), pct: world.length > 0 ? 100 : 0, color: '#2080f0' },
+      { label: '势力', current: factions.length, total: Math.max(factions.length, 3), pct: factions.length > 0 ? 100 : 0, color: '#f0a020' },
     ]
+  } catch (e) {
+    // 保持默认值
   } finally { loading.value = false }
 }
 onMounted(loadData)

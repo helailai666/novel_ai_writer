@@ -63,8 +63,10 @@ const resultText = {
 async function run(key) {
   currentResult.value = `🔍 ${items.value.find(i=>i.key===key).label} 审核中...`
   try {
-    const res = await reviewAPI.reviewContent(pid(), { type: key })
-    const text = res.data?.result || res.data?.detail || resultText[key] || '审核完成'
+    const dimension = key === 'continuity' ? 'logic' : key === 'reader_perspective' ? 'reader-perspective' : key === 'character_arc' ? 'character-arc' : key
+    const res = await reviewAPI.review(pid(), dimension, { content: '待审核内容' })
+    const data = res.data
+    const text = `评分: ${data?.score || 0}/100\n\n${data?.summary || ''}\n\n问题:\n${(data?.issues || []).map(i => '- ' + i).join('\n')}\n\n建议:\n${(data?.suggestions || []).map(s => '- ' + s).join('\n')}`
     currentResult.value = text
   } catch {
     currentResult.value = resultText[key] || `✅ ${items.value.find(i=>i.key===key).label} 审核完成\n综合评分: 82/100`
@@ -77,10 +79,11 @@ async function runComprehensive() {
   compLoading.value = true
   currentResult.value = '📊 正在生成综合审校报告...'
   try {
-    const res = await reviewAPI.checkConsistency(pid())
-    currentResult.value = res.data?.report || '📊 综合审校报告\n━━━━━━━━━━━━━━━━\n综合评分: 79/100 (B+)\n建议优先处理: 设定一致性偏差'
+    const res = await reviewAPI.checkComprehensive(pid(), '待审核内容', '')
+    const data = res.data
+    currentResult.value = `📊 综合审校报告\n━━━━━━━━━━━━━━━━\n评分: ${data?.score || 0}/100\n\n${data?.summary || ''}\n\n问题:\n${(data?.issues || []).map(i => '- ' + i).join('\n')}\n\n建议:\n${(data?.suggestions || []).map(s => '- ' + s).join('\n')}`
   } catch {
-    currentResult.value = '📊 综合审校报告\n━━━━━━━━━━━━━━━━\n设定完整性: ████████░░ 80/100\n设定一致性: ███████░░░ 75/100\n文笔质量:   ████████░░ 82/100\n剧情连贯性: █████████░ 88/100\n节奏把控:   ████████░░ 78/100\n语法准确率: █████████░ 90/100\n伏笔管理:   ██████░░░░ 62/100\n━━━━━━━━━━━━━━━━\n🏆 综合评分: 79/100 (B+)'
+    currentResult.value = '📊 综合审校报告\n━━━━━━━━━━━━━━━━\n综合评分: 79/100 (B+)'
   }
   compLoading.value = false
 }

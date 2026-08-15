@@ -11,7 +11,6 @@
   "dependencies": {
     "@vicons/ionicons5": "^0.13.0",
     "axios": "^1.7.0",
-    "markdown-it": "^14.0.0",
     "naive-ui": "^2.40.0",
     "pinia": "^2.2.0",
     "unplugin-auto-import": "^21.0.0",

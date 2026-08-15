@@ -104,10 +104,10 @@
  * 集成 StreamOutput 组件，支持 SSE 流式生成 + 打字机展示。
  */
 import { ref, computed, onMounted, h } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
-import { projectAPI, chapterAPI, aiAPI } from '../api/index.js'
+import { projectAPI, writingAPI, aiAPI } from '../api/index.js'
 import StreamOutput from '../components/StreamOutput.vue'
 
 const route = useRoute()
@@ -159,11 +159,6 @@ const moreActions = [
     icon: () => h('span', '✨'),
   },
   {
-    label: '扩写/缩写',
-    key: 'expand',
-    icon: () => h('span', '📐'),
-  },
-  {
     type: 'divider',
   },
   {
@@ -181,7 +176,6 @@ const moreActions = [
 function handleMoreAction(key) {
   if (key === 'continue') continueWrite()
   else if (key === 'polish') polish()
-  else if (key === 'expand') expandOrShorten()
   else if (key?.startsWith('speed-')) {
     streamSpeed.value = parseInt(key.replace('speed-', ''))
     moreActions.find(a => a.key === 'speed').label = `打字速度: ${streamSpeed.value}ms`
@@ -206,7 +200,7 @@ function onStreamDone({ content, tokens }) {
 /** 保存回调 */
 async function onStreamSave({ content }) {
   try {
-    await chapterAPI.createChapter(pid(), {
+    await writingAPI.createChapter(pid(), {
       title: chTitle.value || `第${chNum.value}章`,
       chapter_number: chNum.value,
       content,
@@ -225,36 +219,45 @@ function onStreamError(err) {
 // ── 传统操作 ────────────────────────────────────────────────────
 
 async function continueWrite() {
+  if (!chapters.value.length) { message.warning('暂无章节，请先生成章节') ; return }
+  const lastChapter = chapters.value[chapters.value.length - 1]
   try {
-    const res = await aiAPI.continueWriting(pid(), null, { chapter_number: chNum.value })
+    await aiAPI.continueWriting(pid(), { chapter_id: lastChapter.id, direction: '' })
     message.success('续写完成')
-  } catch { message.info('续写完成 (演示模式)') }
+    await load()
+  } catch (e) { message.error('续写失败: ' + (e.message || '未知错误')) }
 }
 
 async function polish() {
+  if (!chapters.value.length) { message.warning('暂无章节，请先生成章节') ; return }
+  const lastChapter = chapters.value[chapters.value.length - 1]
   try {
-    const res = await aiAPI.polish(pid(), null, { chapter_number: chNum.value })
+    await aiAPI.polish(pid(), { chapter_id: lastChapter.id, aspect: 'general' })
     message.success('润色完成')
-  } catch { message.info('润色完成 (演示模式)') }
-}
-
-async function expandOrShorten() {
-  try {
-    const res = await aiAPI.expandOrShorten(pid(), null, { chapter_number: chNum.value })
-    message.success('扩写完成')
-  } catch { message.info('扩写完成 (演示模式)') }
+    await load()
+  } catch (e) { message.error('润色失败: ' + (e.message || '未知错误')) }
 }
 
 async function batchGen() {
   batchLoading.value = true
-  for (let i = batchStart.value; i <= batchEnd.value; i++) {
-    try {
-      await aiAPI.generateContent(pid(), null, { chapter_number: i })
-    } catch {}
+  try {
+    const prompts = []
+    for (let i = batchStart.value; i <= batchEnd.value; i++) {
+      prompts.push(`写第${i}章，2000字`)
+    }
+    const res = await aiAPI.batchGenerate(pid(), {
+      prompts,
+      start_chapter_number: batchStart.value,
+      style: project.value?.style || 'narrative',
+      target_word_count: 2000,
+    })
+    message.success(`批量生成完成: ${res.data?.generated || 0} 章`)
+    await load()
+  } catch (e) {
+    message.error('批量生成失败: ' + (e.message || '未知错误'))
+  } finally {
+    batchLoading.value = false
   }
-  message.success(`第${batchStart.value}-${batchEnd.value}章批量生成完成`)
-  await load()
-  batchLoading.value = false
 }
 
 // ── 数据加载 ────────────────────────────────────────────────────
@@ -264,7 +267,7 @@ async function load() {
   try {
     const [pRes, cRes] = await Promise.all([
       projectAPI.getProject(pid()),
-      chapterAPI.getChapters(pid()).catch(() => ({ data: [] })),
+      writingAPI.getChapters(pid()).catch(() => ({ data: [] })),
     ])
     project.value = pRes.data?.data || pRes.data || {}
     chapters.value = cRes.data?.data || cRes.data || []

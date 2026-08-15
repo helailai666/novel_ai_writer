@@ -79,6 +79,7 @@ import { ref, computed, h, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { AddCircleOutline, SparklesOutline } from '@vicons/ionicons5'
+import { settingsAPI, aiGenerateAPI } from '../api/index.js'
 
 const route = useRoute()
 const message = useMessage()
@@ -135,17 +136,10 @@ function renderLabel({ option }) {
 async function load() {
   loading.value = true
   try {
-    const { data } = await import('../api/index.js').then(m => m.default.getOutlines ? m.default.getOutlines(pid()) : Promise.reject())
-    outlines.value = data?.data || data || []
+    const res = await settingsAPI.getOutlines(pid())
+    outlines.value = res.data?.data || res.data || []
   } catch {
-    outlines.value = [
-      { id:1, title:'第一卷·初入仙途', level:1, sort_order:0, parent_id:null, status:'done', summary:'林玄拜入天剑宗的成长之路' },
-      { id:2, title:'第一章·宗门考核', level:2, sort_order:0, parent_id:1, status:'done', summary:'林玄通过天剑宗入门考核' },
-      { id:3, title:'第二章·灵根觉醒', level:2, sort_order:1, parent_id:1, status:'writing', summary:'检测出天生剑骨，震惊全宗' },
-      { id:4, title:'第三章·初识如烟', level:2, sort_order:2, parent_id:1, status:'planned', summary:'与柳如烟在藏经阁相遇' },
-      { id:5, title:'第二卷·风云渐起', level:1, sort_order:1, parent_id:null, status:'planned', summary:'修真界暗流涌动' },
-      { id:6, title:'第四章·魔道来袭', level:2, sort_order:0, parent_id:5, status:'planned', summary:'血煞门突袭天剑宗' },
-    ]
+    outlines.value = []
   } finally { loading.value = false }
 }
 onMounted(load)
@@ -157,18 +151,33 @@ async function save() {
   try { await formRef.value?.validate() } catch { return }
   saving.value = true
   try {
-    message.success(editing.value ? '已更新' : '已创建')
+    if (editing.value) {
+      await settingsAPI.updateOutline(pid(), editing.value.id, form.value)
+      message.success('已更新')
+    } else {
+      await settingsAPI.createOutline(pid(), form.value)
+      message.success('已创建')
+    }
     drawerVisible.value = false; await load()
-  } catch { message.error('保存失败')
+  } catch (e) { message.error('保存失败: ' + (e.message || ''))
   } finally { saving.value = false }
 }
 
 async function aiGenerateOutline() {
   aiLoading.value = true
-  message.info('AI 正在生成大纲...（此功能需后端支持）')
-  await new Promise(r => setTimeout(r, 2000))
-  message.success('AI 大纲生成演示完成！')
-  aiLoading.value = false
+  try {
+    await aiGenerateAPI.generateOutline(pid(), {
+      name: '大纲节点',
+      category: '1',
+      extra: '请生成一个小说大纲',
+    })
+    message.success('AI 大纲生成完成！')
+    await load()
+  } catch (e) {
+    message.error('AI 生成失败: ' + (e.message || ''))
+  } finally {
+    aiLoading.value = false
+  }
 }
 </script>
 

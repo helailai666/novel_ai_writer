@@ -2,12 +2,12 @@
 
 import json
 import logging
-import os
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.database import get_db
 from app.agents.review_agent import ReviewAgent
 
@@ -21,10 +21,10 @@ router = APIRouter(prefix="/api/review", tags=["review"])
 def _get_review_agent() -> ReviewAgent:
     """创建 ReviewAgent 实例"""
     return ReviewAgent(
-        llm_provider=os.getenv("LLM_PROVIDER", "openai"),
-        model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-        api_key=os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "",
-        api_base=os.getenv("LLM_API_BASE"),
+        llm_provider="openai",
+        model=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY or "",
+        api_base=settings.LLM_API_BASE,
     )
 
 

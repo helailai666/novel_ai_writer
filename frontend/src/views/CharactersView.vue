@@ -174,19 +174,17 @@
  * - AI 辅助生成角色
  * - 响应式布局（手机/平板/桌面）
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useMessage, useDialog } from 'naive-ui'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useMessage } from 'naive-ui'
 import {
   PersonAddOutline,
   SparklesOutline,
 } from '@vicons/ionicons5'
-import { characterAPI } from '../api/index.js'
+import { settingsAPI, aiGenerateAPI } from '../api/index.js'
 
 const route = useRoute()
-const router = useRouter()
 const message = useMessage()
-const dialog = useDialog()
 
 const pid = () => route.params.id
 
@@ -218,15 +216,14 @@ const formRef = ref(null)
 // ── 表单 ────────────────────────────────────────────────────────
 const initForm = () => ({
   name: '',
-  alias: '',
-  role: '配角',
-  realm: '',
-  faction: '',
-  gender: '男',
-  appearance: '',
+  role: 'supporting',
+  gender: 'unknown',
+  age: 0,
   personality: '',
   background: '',
-  description: '',
+  appearance: '',
+  abilities: '',
+  relationships: '',
 })
 
 const formData = ref(initForm())
@@ -251,20 +248,10 @@ function roleTypeTag(role) {
 async function loadCharacters() {
   loading.value = true
   try {
-    const res = await characterAPI.getCharacters(pid())
+    const res = await settingsAPI.getCharacters(pid())
     characters.value = res.data?.data || res.data || []
   } catch {
-    characters.value = [
-      { id: 1, name: '林玄', role: '主角', realm: '筑基期', faction: '天剑宗',
-        alias: '剑仙转世', description: '身世神秘的少年，天生剑骨...',
-        appearance: '黑衣黑发，剑眉星目', personality: '坚毅隐忍',
-        background: '从小被弃于山林，被师父收养', gender: '男' },
-      { id: 2, name: '柳如烟', role: '爱人', realm: '金丹期', faction: '碧水阁',
-        alias: '烟雨仙子', description: '天剑宗第一美人...',
-        appearance: '白衣胜雪，青丝如瀑', gender: '女' },
-      { id: 3, name: '血魔老祖', role: '反派', realm: '元婴期', faction: '血煞门',
-        description: '修炼邪功的魔道巨擘', gender: '男' },
-    ]
+    characters.value = []
   } finally {
     loading.value = false
   }
@@ -277,15 +264,14 @@ function openEditDrawer(char) {
   editingChar.value = char
   formData.value = {
     name: char.name || '',
-    alias: char.alias || '',
-    role: char.role || '配角',
-    realm: char.realm || '',
-    faction: char.faction || '',
-    gender: char.gender || '男',
-    appearance: char.appearance || '',
+    role: char.role || 'supporting',
+    gender: char.gender || 'unknown',
+    age: char.age || 0,
     personality: char.personality || '',
     background: char.background || '',
-    description: char.description || '',
+    appearance: char.appearance || '',
+    abilities: char.abilities || '',
+    relationships: char.relationships || '',
   }
   drawerVisible.value = true
 }
@@ -307,10 +293,10 @@ async function saveCharacter() {
   saving.value = true
   try {
     if (editingChar.value) {
-      await characterAPI.updateCharacter(editingChar.value.id, formData.value)
+      await settingsAPI.updateCharacter(pid(), editingChar.value.id, formData.value)
       message.success('角色已更新')
     } else {
-      await characterAPI.createCharacter(pid(), formData.value)
+      await settingsAPI.createCharacter(pid(), formData.value)
       message.success('角色已创建')
     }
     drawerVisible.value = false
@@ -326,7 +312,7 @@ async function saveCharacter() {
 // ── 删除角色 ────────────────────────────────────────────────────
 async function deleteCharacter(id) {
   try {
-    await characterAPI.deleteCharacter(id)
+    await settingsAPI.deleteCharacter(pid(), id)
     message.success('角色已删除')
     await loadCharacters()
   } catch (e) {
@@ -339,12 +325,15 @@ async function aiGenerateCharacters() {
   aiLoading.value = true
   message.info('正在生成角色设定...')
   try {
-    // 尝试调用后端 AI 生成
-    await new Promise(r => setTimeout(r, 2000))
+    await aiGenerateAPI.generateCharacter(pid(), {
+      name: '新角色',
+      role: 'supporting',
+      extra: '请生成一个有深度的角色设定',
+    })
     message.success('AI 角色生成完成！')
     await loadCharacters()
-  } catch {
-    message.info('AI 生成完成 (演示模式)')
+  } catch (e) {
+    message.error('AI 生成失败: ' + (e.message || '未知错误'))
   } finally {
     aiLoading.value = false
   }

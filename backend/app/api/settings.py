@@ -1,6 +1,5 @@
 """设定管理 API — 世界观/角色/能力/道具/势力/大纲/场景/时间线/伏笔"""
 
-import os
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.database import get_db
 from app.models.world_setting import WorldSetting
 from app.models.character import Character
@@ -30,17 +30,20 @@ router = APIRouter(prefix="/api/projects/{project_id}/settings", tags=["settings
 def _get_creative_agent() -> CreativeAgent:
     """创建 CreativeAgent 实例"""
     return CreativeAgent(
-        llm_provider=os.getenv("LLM_PROVIDER", "openai"),
-        model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-        api_key=os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "",
-        api_base=os.getenv("LLM_API_BASE"),
+        llm_provider="openai",
+        model=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY or "",
+        api_base=settings.LLM_API_BASE,
     )
 
 
 # ── Generic Helpers ──────────────────────────────────────────────
 
-async def _get_or_404(model, obj_id: str, db: AsyncSession):
-    result = await db.execute(select(model).where(model.id == obj_id))
+async def _get_or_404(model, obj_id: str, db: AsyncSession, project_id: str = None):
+    stmt = select(model).where(model.id == obj_id)
+    if project_id and hasattr(model, 'project_id'):
+        stmt = stmt.where(model.project_id == project_id)
+    result = await db.execute(stmt)
     obj = result.scalar_one_or_none()
     if not obj:
         raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
@@ -92,7 +95,7 @@ async def list_world_settings(project_id: str, db: AsyncSession = Depends(get_db
 
 @router.patch("/world/{setting_id}")
 async def update_world_setting(project_id: str, setting_id: str, payload: WorldSettingUpdate, db: AsyncSession = Depends(get_db)):
-    ws = await _get_or_404(WorldSetting, setting_id, db)
+    ws = await _get_or_404(WorldSetting, setting_id, db, project_id)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(ws, k, v)
     await db.flush()
@@ -102,7 +105,7 @@ async def update_world_setting(project_id: str, setting_id: str, payload: WorldS
 
 @router.delete("/world/{setting_id}", status_code=204)
 async def delete_world_setting(project_id: str, setting_id: str, db: AsyncSession = Depends(get_db)):
-    ws = await _get_or_404(WorldSetting, setting_id, db)
+    ws = await _get_or_404(WorldSetting, setting_id, db, project_id)
     await db.delete(ws)
     await db.flush()
 
@@ -150,13 +153,13 @@ async def list_characters(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/characters/{char_id}")
 async def get_character(project_id: str, char_id: str, db: AsyncSession = Depends(get_db)):
-    char = await _get_or_404(Character, char_id, db)
+    char = await _get_or_404(Character, char_id, db, project_id)
     return _dict_from_model(char)
 
 
 @router.patch("/characters/{char_id}")
 async def update_character(project_id: str, char_id: str, payload: CharacterUpdate, db: AsyncSession = Depends(get_db)):
-    char = await _get_or_404(Character, char_id, db)
+    char = await _get_or_404(Character, char_id, db, project_id)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(char, k, v)
     await db.flush()
@@ -166,7 +169,7 @@ async def update_character(project_id: str, char_id: str, payload: CharacterUpda
 
 @router.delete("/characters/{char_id}", status_code=204)
 async def delete_character(project_id: str, char_id: str, db: AsyncSession = Depends(get_db)):
-    char = await _get_or_404(Character, char_id, db)
+    char = await _get_or_404(Character, char_id, db, project_id)
     await db.delete(char)
     await db.flush()
 
@@ -199,7 +202,7 @@ async def list_skills(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/skills/{skill_id}", status_code=204)
 async def delete_skill(project_id: str, skill_id: str, db: AsyncSession = Depends(get_db)):
-    skill = await _get_or_404(Skill, skill_id, db)
+    skill = await _get_or_404(Skill, skill_id, db, project_id)
     await db.delete(skill)
     await db.flush()
 
@@ -233,7 +236,7 @@ async def list_items(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/items/{item_id}", status_code=204)
 async def delete_item(project_id: str, item_id: str, db: AsyncSession = Depends(get_db)):
-    item = await _get_or_404(Item, item_id, db)
+    item = await _get_or_404(Item, item_id, db, project_id)
     await db.delete(item)
     await db.flush()
 
@@ -265,7 +268,7 @@ async def list_factions(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/factions/{faction_id}", status_code=204)
 async def delete_faction(project_id: str, faction_id: str, db: AsyncSession = Depends(get_db)):
-    faction = await _get_or_404(Faction, faction_id, db)
+    faction = await _get_or_404(Faction, faction_id, db, project_id)
     await db.delete(faction)
     await db.flush()
 
@@ -308,7 +311,7 @@ async def list_outlines(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.patch("/outlines/{outline_id}")
 async def update_outline(project_id: str, outline_id: str, payload: OutlineUpdate, db: AsyncSession = Depends(get_db)):
-    outline = await _get_or_404(Outline, outline_id, db)
+    outline = await _get_or_404(Outline, outline_id, db, project_id)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(outline, k, v)
     await db.flush()
@@ -318,7 +321,7 @@ async def update_outline(project_id: str, outline_id: str, payload: OutlineUpdat
 
 @router.delete("/outlines/{outline_id}", status_code=204)
 async def delete_outline(project_id: str, outline_id: str, db: AsyncSession = Depends(get_db)):
-    outline = await _get_or_404(Outline, outline_id, db)
+    outline = await _get_or_404(Outline, outline_id, db, project_id)
     await db.delete(outline)
     await db.flush()
 
@@ -351,7 +354,7 @@ async def list_locations(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/locations/{location_id}", status_code=204)
 async def delete_location(project_id: str, location_id: str, db: AsyncSession = Depends(get_db)):
-    loc = await _get_or_404(Location, location_id, db)
+    loc = await _get_or_404(Location, location_id, db, project_id)
     await db.delete(loc)
     await db.flush()
 
@@ -386,7 +389,7 @@ async def list_timelines(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/timelines/{timeline_id}", status_code=204)
 async def delete_timeline(project_id: str, timeline_id: str, db: AsyncSession = Depends(get_db)):
-    tl = await _get_or_404(Timeline, timeline_id, db)
+    tl = await _get_or_404(Timeline, timeline_id, db, project_id)
     await db.delete(tl)
     await db.flush()
 
@@ -418,7 +421,7 @@ async def list_foreshadows(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/foreshadows/{foreshadow_id}", status_code=204)
 async def delete_foreshadow(project_id: str, foreshadow_id: str, db: AsyncSession = Depends(get_db)):
-    fs = await _get_or_404(Foreshadow, foreshadow_id, db)
+    fs = await _get_or_404(Foreshadow, foreshadow_id, db, project_id)
     await db.delete(fs)
     await db.flush()
 

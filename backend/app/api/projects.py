@@ -103,8 +103,7 @@ async def export_project(project_id: str, format: str = Query("md", pattern="^(m
     project = await _get_or_404(project_id, db)
 
     # 获取所有章节
-    from sqlalchemy import select as sa_select
-    stmt = sa_select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.chapter_number)
+    stmt = select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.chapter_number)
     result = await db.execute(stmt)
     chapters = result.scalars().all()
 

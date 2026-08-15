@@ -64,6 +64,10 @@ const routes = [
         meta: { title: '项目仪表盘' }
       }
     ]
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/projects'
   }
 ]
 

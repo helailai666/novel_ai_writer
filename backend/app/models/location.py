@@ -24,4 +24,5 @@ class Location(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     project: Mapped["Project"] = relationship(back_populates="locations")
-    children: Mapped[list["Location"]] = relationship("Location", back_populates="parent", remote_side="Location.id", cascade="all, delete-orphan")
+    parent: Mapped["Location | None"] = relationship("Location", back_populates="children", remote_side="Location.id")
+    children: Mapped[list["Location"]] = relationship("Location", back_populates="parent", cascade="all, delete-orphan")

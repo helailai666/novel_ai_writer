@@ -24,4 +24,5 @@ class Outline(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     project: Mapped["Project"] = relationship(back_populates="outlines")
-    children: Mapped[list["Outline"]] = relationship("Outline", back_populates="parent", remote_side="Outline.id", cascade="all, delete-orphan")
+    parent: Mapped["Outline | None"] = relationship("Outline", back_populates="children", remote_side="Outline.id")
+    children: Mapped[list["Outline"]] = relationship("Outline", back_populates="parent", cascade="all, delete-orphan")

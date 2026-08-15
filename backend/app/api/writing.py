@@ -1,5 +1,6 @@
 """创作 API — 章节生成、批处理、多卷管理（集成 LangChain Agent）"""
 
+import json
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.database import get_db
 from app.models.chapter import Chapter
 from app.models.volume import Volume
@@ -60,6 +62,18 @@ class BatchGenerateRequest(BaseModel):
     target_word_count: int = Field(default=2000, ge=100, le=10000)
 
 
+class ContinueRequest(BaseModel):
+    """续写请求"""
+    chapter_id: str = Field(..., description="章节ID")
+    direction: str = Field(default="", description="续写方向")
+
+
+class PolishRequest(BaseModel):
+    """润色请求"""
+    chapter_id: str = Field(..., description="章节ID")
+    aspect: str = Field(default="general", description="润色方面")
+
+
 # ── Volume Routes ────────────────────────────────────────────────
 
 @router.post("/volumes", status_code=201)
@@ -81,7 +95,7 @@ async def list_volumes(project_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/volumes/{volume_id}", status_code=204)
 async def delete_volume(project_id: str, volume_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Volume).where(Volume.id == volume_id))
+    result = await db.execute(select(Volume).where(Volume.id == volume_id, Volume.project_id == project_id))
     volume = result.scalar_one_or_none()
     if not volume:
         raise HTTPException(status_code=404, detail="Volume not found")
@@ -122,7 +136,7 @@ async def list_chapters(
 
 @router.get("/chapters/{chapter_id}")
 async def get_chapter(project_id: str, chapter_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
+    result = await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.project_id == project_id))
     chapter = result.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
@@ -131,7 +145,7 @@ async def get_chapter(project_id: str, chapter_id: str, db: AsyncSession = Depen
 
 @router.patch("/chapters/{chapter_id}")
 async def update_chapter(project_id: str, chapter_id: str, payload: ChapterUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
+    result = await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.project_id == project_id))
     chapter = result.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
@@ -146,7 +160,7 @@ async def update_chapter(project_id: str, chapter_id: str, payload: ChapterUpdat
 
 @router.delete("/chapters/{chapter_id}", status_code=204)
 async def delete_chapter(project_id: str, chapter_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
+    result = await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.project_id == project_id))
     chapter = result.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
@@ -157,13 +171,12 @@ async def delete_chapter(project_id: str, chapter_id: str, db: AsyncSession = De
 # ── Agent 工厂 ──────────────────────────────────────────────────
 
 def _get_writer_agent() -> WriterAgent:
-    """创建 WriterAgent 实例（自动读取环境变量，无 Key 时自动 mock）"""
-    import os
+    """创建 WriterAgent 实例"""
     return WriterAgent(
-        llm_provider=os.getenv("LLM_PROVIDER", "openai"),
-        model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-        api_key=os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "",
-        api_base=os.getenv("LLM_API_BASE"),
+        llm_provider="openai",
+        model=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY or "",
+        api_base=settings.LLM_API_BASE,
         streaming=True,
     )
 
@@ -240,7 +253,6 @@ async def generate_chapter_stream(
             ):
                 full_content += chunk
                 # SSE 格式: data: {...}\n\n
-                import json
                 yield f"data: {json.dumps({'chunk': chunk, 'is_mock': agent.is_mock}, ensure_ascii=False)}\n\n"
 
             # 发送完成信号
@@ -335,13 +347,12 @@ async def batch_generate(
 @router.post("/continue")
 async def continue_chapter(
     project_id: str,
-    chapter_id: str,
-    direction: str = "",
+    payload: ContinueRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """续写已有章节"""
     # 获取已有章节
-    result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
+    result = await db.execute(select(Chapter).where(Chapter.id == payload.chapter_id, Chapter.project_id == project_id))
     chapter = result.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
@@ -349,8 +360,8 @@ async def continue_chapter(
     agent = _get_writer_agent()
     gen_result = await agent.continue_chapter(
         previous_content=chapter.content,
-        direction=direction,
-        context={"project_id": project_id, "chapter_id": chapter_id},
+        direction=payload.direction,
+        context={"project_id": project_id, "chapter_id": payload.chapter_id},
     )
 
     if not gen_result.success:
@@ -370,12 +381,11 @@ async def continue_chapter(
 @router.post("/polish")
 async def polish_chapter(
     project_id: str,
-    chapter_id: str,
-    aspect: str = "general",
+    payload: PolishRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """润色/改写章节"""
-    result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
+    result = await db.execute(select(Chapter).where(Chapter.id == payload.chapter_id, Chapter.project_id == project_id))
     chapter = result.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
@@ -383,7 +393,7 @@ async def polish_chapter(
     agent = _get_writer_agent()
     gen_result = await agent.polish(
         content=chapter.content,
-        aspect=aspect,
+        aspect=payload.aspect,
         context={"project_id": project_id},
     )
 

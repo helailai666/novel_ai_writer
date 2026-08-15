@@ -21,7 +21,6 @@ http.interceptors.response.use(
       || error.response?.data?.message
       || error.message
       || '网络错误'
-    // 仅在浏览器端弹提示
     if (typeof window !== 'undefined') {
       try {
         const message = useMessage()
@@ -34,67 +33,63 @@ http.interceptors.response.use(
 
 // ─── 项目 API ────────────────────────────────────────
 export const projectAPI = {
-  /** 获取项目列表 */
   getProjects(params) {
     return http.get('/projects', { params })
   },
-  /** 获取单个项目 */
   getProject(id) {
     return http.get(`/projects/${id}`)
   },
-  /** 创建项目 */
   createProject(data) {
     return http.post('/projects/', data)
   },
-  /** 更新项目 */
   updateProject(id, data) {
-    return http.put(`/projects/${id}`, data)
+    return http.patch(`/projects/${id}`, data)
   },
-  /** 删除项目 */
   deleteProject(id) {
     return http.delete(`/projects/${id}`)
   },
-  /** 导出项目 */
   exportProject(id, format = 'txt') {
     return http.get(`/projects/${id}/export`, { params: { format }, responseType: 'blob' })
   }
 }
 
-// ─── 章节 API ────────────────────────────────────────
-export const chapterAPI = {
-  /** 获取章节列表 */
-  getChapters(projectId) {
-    return http.get(`/projects/${projectId}/chapters`)
+// ─── 写作 API（章节 + 卷）────────────────────────────
+export const writingAPI = {
+  // 卷
+  getVolumes(projectId) {
+    return http.get(`/projects/${projectId}/writing/volumes`)
   },
-  /** 获取单个章节 */
-  getChapter(chapterId) {
-    return http.get(`/chapters/${chapterId}`)
+  createVolume(projectId, data) {
+    return http.post(`/projects/${projectId}/writing/volumes`, data)
   },
-  /** 创建章节 */
+  deleteVolume(projectId, volumeId) {
+    return http.delete(`/projects/${projectId}/writing/volumes/${volumeId}`)
+  },
+  // 章节
+  getChapters(projectId, params) {
+    return http.get(`/projects/${projectId}/writing/chapters`, { params })
+  },
+  getChapter(projectId, chapterId) {
+    return http.get(`/projects/${projectId}/writing/chapters/${chapterId}`)
+  },
   createChapter(projectId, data) {
-    return http.post(`/projects/${projectId}/chapters`, data)
+    return http.post(`/projects/${projectId}/writing/chapters`, data)
   },
-  /** 更新章节 */
-  updateChapter(chapterId, data) {
-    return http.put(`/chapters/${chapterId}`, data)
+  updateChapter(projectId, chapterId, data) {
+    return http.patch(`/projects/${projectId}/writing/chapters/${chapterId}`, data)
   },
-  /** 删除章节 */
-  deleteChapter(chapterId) {
-    return http.delete(`/chapters/${chapterId}`)
-  },
-  /** 排章节序 */
-  reorderChapters(projectId, chapterIds) {
-    return http.put(`/projects/${projectId}/chapters/reorder`, { chapter_ids: chapterIds })
+  deleteChapter(projectId, chapterId) {
+    return http.delete(`/projects/${projectId}/writing/chapters/${chapterId}`)
   }
 }
 
 // ─── AI 创作 API ─────────────────────────────────────
 export const aiAPI = {
-  /** 生成段落内容 */
-  generateContent(projectId, chapterId, params) {
-    return http.post(`/projects/${projectId}/chapters/${chapterId}/generate`, params)
+  /** 非流式生成 */
+  generateContent(projectId, params) {
+    return http.post(`/projects/${projectId}/writing/generate`, params)
   },
-  /** 流式生成（SSE）— 对齐后端 /api/projects/{id}/writing/generate-stream */
+  /** 流式生成（SSE） */
   generateStream(projectId, params) {
     return fetch(`/api/projects/${projectId}/writing/generate-stream`, {
       method: 'POST',
@@ -102,123 +97,217 @@ export const aiAPI = {
       body: JSON.stringify(params)
     })
   },
-  /** 生成大纲 */
-  generateOutline(projectId, params) {
-    return http.post(`/projects/${projectId}/outline/generate`, params)
+  /** 批量生成 */
+  batchGenerate(projectId, params) {
+    return http.post(`/projects/${projectId}/writing/batch-generate`, params)
   },
   /** 续写 */
-  continueWriting(projectId, chapterId, params) {
-    return http.post(`/projects/${projectId}/chapters/${chapterId}/continue`, params)
+  continueWriting(projectId, params) {
+    return http.post(`/projects/${projectId}/writing/continue`, params)
   },
   /** 润色 */
-  polish(projectId, chapterId, params) {
-    return http.post(`/projects/${projectId}/chapters/${chapterId}/polish`, params)
-  },
-  /** 扩写/缩写 */
-  expandOrShorten(projectId, chapterId, params) {
-    return http.post(`/projects/${projectId}/chapters/${chapterId}/expand`, params)
+  polish(projectId, params) {
+    return http.post(`/projects/${projectId}/writing/polish`, params)
   }
 }
 
-// ─── 设定 API（12 模块）──────────────────────────────
+// ─── 设定 API（各模块独立端点）────────────────────────
 export const settingsAPI = {
-  /** 获取所有模块设定 */
-  getSettings(projectId) {
-    return http.get(`/projects/${projectId}/settings`)
+  // 世界设定
+  getWorldSettings(projectId) {
+    return http.get(`/projects/${projectId}/settings/world`)
   },
-  /** 保存模块设定 */
-  saveSettings(projectId, settings) {
-    return http.put(`/projects/${projectId}/settings`, settings)
+  createWorldSetting(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/world`, data)
   },
-  /** 获取单个模块设定 */
-  getModuleSettings(projectId, moduleKey) {
-    return http.get(`/projects/${projectId}/settings/${moduleKey}`)
+  updateWorldSetting(projectId, settingId, data) {
+    return http.patch(`/projects/${projectId}/settings/world/${settingId}`, data)
   },
-  /** 保存单个模块设定 */
-  saveModuleSettings(projectId, moduleKey, data) {
-    return http.put(`/projects/${projectId}/settings/${moduleKey}`, data)
+  deleteWorldSetting(projectId, settingId) {
+    return http.delete(`/projects/${projectId}/settings/world/${settingId}`)
   },
-  /** AI 辅助生成设定 */
-  generateSettings(projectId, moduleKey) {
-    return http.post(`/projects/${projectId}/settings/${moduleKey}/generate`)
+  // 角色
+  getCharacters(projectId) {
+    return http.get(`/projects/${projectId}/settings/characters`)
+  },
+  getCharacter(projectId, charId) {
+    return http.get(`/projects/${projectId}/settings/characters/${charId}`)
+  },
+  createCharacter(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/characters`, data)
+  },
+  updateCharacter(projectId, charId, data) {
+    return http.patch(`/projects/${projectId}/settings/characters/${charId}`, data)
+  },
+  deleteCharacter(projectId, charId) {
+    return http.delete(`/projects/${projectId}/settings/characters/${charId}`)
+  },
+  // 技能
+  getSkills(projectId) {
+    return http.get(`/projects/${projectId}/settings/skills`)
+  },
+  createSkill(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/skills`, data)
+  },
+  deleteSkill(projectId, skillId) {
+    return http.delete(`/projects/${projectId}/settings/skills/${skillId}`)
+  },
+  // 道具
+  getItems(projectId) {
+    return http.get(`/projects/${projectId}/settings/items`)
+  },
+  createItem(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/items`, data)
+  },
+  deleteItem(projectId, itemId) {
+    return http.delete(`/projects/${projectId}/settings/items/${itemId}`)
+  },
+  // 势力
+  getFactions(projectId) {
+    return http.get(`/projects/${projectId}/settings/factions`)
+  },
+  createFaction(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/factions`, data)
+  },
+  deleteFaction(projectId, factionId) {
+    return http.delete(`/projects/${projectId}/settings/factions/${factionId}`)
+  },
+  // 大纲
+  getOutlines(projectId) {
+    return http.get(`/projects/${projectId}/settings/outlines`)
+  },
+  createOutline(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/outlines`, data)
+  },
+  updateOutline(projectId, outlineId, data) {
+    return http.patch(`/projects/${projectId}/settings/outlines/${outlineId}`, data)
+  },
+  deleteOutline(projectId, outlineId) {
+    return http.delete(`/projects/${projectId}/settings/outlines/${outlineId}`)
+  },
+  // 场景/地点
+  getLocations(projectId) {
+    return http.get(`/projects/${projectId}/settings/locations`)
+  },
+  createLocation(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/locations`, data)
+  },
+  deleteLocation(projectId, locationId) {
+    return http.delete(`/projects/${projectId}/settings/locations/${locationId}`)
+  },
+  // 时间线
+  getTimelines(projectId) {
+    return http.get(`/projects/${projectId}/settings/timelines`)
+  },
+  createTimeline(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/timelines`, data)
+  },
+  deleteTimeline(projectId, timelineId) {
+    return http.delete(`/projects/${projectId}/settings/timelines/${timelineId}`)
+  },
+  // 伏笔
+  getForeshadows(projectId) {
+    return http.get(`/projects/${projectId}/settings/foreshadows`)
+  },
+  createForeshadow(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/foreshadows`, data)
+  },
+  deleteForeshadow(projectId, foreshadowId) {
+    return http.delete(`/projects/${projectId}/settings/foreshadows/${foreshadowId}`)
+  }
+}
+
+// ─── AI 辅助生成设定 API ─────────────────────────────
+export const aiGenerateAPI = {
+  generateWorld(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/ai/generate-world`, data)
+  },
+  generateCharacter(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/ai/generate-character`, data)
+  },
+  generateItem(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/ai/generate-item`, data)
+  },
+  generateSkill(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/ai/generate-skill`, data)
+  },
+  generateFaction(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/ai/generate-faction`, data)
+  },
+  generateLocation(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/ai/generate-location`, data)
+  },
+  generateOutline(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/ai/generate-outline`, data)
   }
 }
 
 // ─── 审核 API ────────────────────────────────────────
 export const reviewAPI = {
-  /** 审核内容 */
-  reviewContent(projectId, data) {
-    return http.post(`/projects/${projectId}/review`, data)
-  },
-  /** 获取审核记录 */
-  getReviewHistory(projectId) {
-    return http.get(`/projects/${projectId}/review/history`)
-  },
-  /** 纠错建议 */
-  getSuggestions(projectId, content) {
-    return http.post(`/projects/${projectId}/review/suggestions`, { content })
+  /** 通用审核（dimension: consistency/logic/foreshadowing/character-arc/pacing/prose/reader-perspective/comprehensive） */
+  review(projectId, dimension, data) {
+    return http.post(`/review/${dimension}`, { project_id: projectId, ...data })
   },
   /** 一致性检查 */
-  checkConsistency(projectId) {
-    return http.post(`/projects/${projectId}/review/consistency`)
+  checkConsistency(projectId, content, context) {
+    return http.post('/review/consistency', { project_id: projectId, content, context })
+  },
+  /** 逻辑检查 */
+  checkLogic(projectId, content, context) {
+    return http.post('/review/logic', { project_id: projectId, content, context })
+  },
+  /** 伏笔检查 */
+  checkForeshadowing(projectId, content, context) {
+    return http.post('/review/foreshadowing', { project_id: projectId, content, context })
+  },
+  /** 角色弧光检查 */
+  checkCharacterArc(projectId, content, context) {
+    return http.post('/review/character-arc', { project_id: projectId, content, context })
+  },
+  /** 节奏检查 */
+  checkPacing(projectId, content, context) {
+    return http.post('/review/pacing', { project_id: projectId, content, context })
+  },
+  /** 文笔检查 */
+  checkProse(projectId, content, context) {
+    return http.post('/review/prose', { project_id: projectId, content, context })
+  },
+  /** 读者视角检查 */
+  checkReaderPerspective(projectId, content, context) {
+    return http.post('/review/reader-perspective', { project_id: projectId, content, context })
+  },
+  /** 综合审核 */
+  checkComprehensive(projectId, content, context) {
+    return http.post('/review/comprehensive', { project_id: projectId, content, context })
   }
 }
 
-// ─── 角色 API ────────────────────────────────────────
-export const characterAPI = {
-  getCharacters(projectId) {
-    return http.get(`/projects/${projectId}/characters`)
+// ─── 搜索 API ────────────────────────────────────────
+export const searchAPI = {
+  searchProjects(q, limit) {
+    return http.get('/search/projects', { params: { q, limit } })
   },
-  createCharacter(projectId, data) {
-    return http.post(`/projects/${projectId}/characters`, data)
+  searchCharacters(projectId, q) {
+    return http.get(`/search/projects/${projectId}/characters`, { params: { q } })
   },
-  updateCharacter(characterId, data) {
-    return http.put(`/characters/${characterId}`, data)
+  searchChapters(projectId, q) {
+    return http.get(`/search/projects/${projectId}/chapters`, { params: { q } })
   },
-  deleteCharacter(characterId) {
-    return http.delete(`/characters/${characterId}`)
-  }
-}
-
-// ─── 世界设定 API ────────────────────────────────────
-export const worldAPI = {
-  getWorldSettings(projectId) {
-    return http.get(`/projects/${projectId}/world`)
+  searchWeb(query, max_results) {
+    return http.post('/search/web', { query, max_results })
   },
-  saveWorldSettings(projectId, data) {
-    return http.put(`/projects/${projectId}/world`, data)
-  }
-}
-
-// ─── 搜索结果/灵感 API ───────────────────────────────
-export const inspirationAPI = {
-  getInspirations(projectId) {
-    return http.get(`/projects/${projectId}/inspirations`)
-  },
-  createInspiration(projectId, data) {
-    return http.post(`/projects/${projectId}/inspirations`, data)
-  }
-}
-
-// ─── 统计 API ────────────────────────────────────────
-export const statsAPI = {
-  getProjectStats(projectId) {
-    return http.get(`/projects/${projectId}/stats`)
-  },
-  getDashboardStats() {
-    return http.get('/stats/dashboard')
+  searchWebAISummary(query, max_results) {
+    return http.post('/search/web/ai-summary', { query, max_results })
   }
 }
 
 // 默认导出（快捷调用）
 export default {
   ...projectAPI,
-  ...chapterAPI,
+  ...writingAPI,
   ...aiAPI,
   ...settingsAPI,
+  ...aiGenerateAPI,
   ...reviewAPI,
-  ...characterAPI,
-  ...worldAPI,
-  ...inspirationAPI,
-  ...statsAPI
+  ...searchAPI
 }

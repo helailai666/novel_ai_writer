@@ -185,7 +185,7 @@ import {
   AddCircleOutline,
   SparklesOutline,
 } from '@vicons/ionicons5'
-import { worldAPI } from '../api/index.js'
+import { settingsAPI, aiGenerateAPI } from '../api/index.js'
 
 const route = useRoute()
 const message = useMessage()
@@ -270,20 +270,10 @@ const aiForm = ref({
 async function loadData() {
   loading.value = true
   try {
-    const res = await worldAPI.getWorldSettings(pid())
+    const res = await settingsAPI.getWorldSettings(pid())
     settings.value = res.data?.data || res.data || []
   } catch {
-    // Mock 演示数据
-    settings.value = [
-      { id: 1, name: '灵力体系', category: 'magic_system',
-        content: '天地灵气分为金木水火土五行。修炼者通过功法引导灵气入体，淬炼经脉，凝聚金丹。\n\n灵力等级：炼气→筑基→金丹→元婴→化神→渡劫\n\n每突破一个大境界，寿命延长百年，神识范围扩大十倍。' },
-      { id: 2, name: '九州大陆', category: 'geography',
-        content: '九州大陆分为东胜神洲、西牛贺洲、南赡部洲、北俱芦洲四大板块。\n\n中央天柱山高万仞，传说为上古神魔战场。\n\n东域以天剑宗为首，西域佛门圣地，南海散修聚集，北疆妖兽横行。' },
-      { id: 3, name: '万年前神魔大战', category: 'history',
-        content: '万年前，仙界与魔界爆发大战，天地破碎。\n\n诸神陨落，魔帝被封印于九幽之下。\n\n大战导致天地法则残缺，修真界从此再无人能飞升仙界。\n\n传说集齐五件上古神器可修复天地法则。' },
-      { id: 4, name: '宗派规矩', category: 'culture',
-        content: '天剑宗立派三千年，以剑入道。\n\n门规：\n1. 不可欺师灭祖\n2. 不可滥杀凡人\n3. 同门相残者废去修为逐出师门\n4. 每年举行一次论剑大会\n\n服饰：外门弟子青衫，内门弟子白衫，核心弟子紫衫。' },
-    ]
+    settings.value = []
   } finally {
     loading.value = false
   }
@@ -312,10 +302,10 @@ async function saveItem() {
   saving.value = true
   try {
     if (editingItem.value) {
-      await worldAPI.saveWorldSettings(pid(), formData.value)
+      await settingsAPI.updateWorldSetting(pid(), editingItem.value.id, formData.value)
       message.success('已更新')
     } else {
-      await worldAPI.saveWorldSettings(pid(), formData.value)
+      await settingsAPI.createWorldSetting(pid(), formData.value)
       message.success('已创建')
     }
     drawerVisible.value = false
@@ -330,11 +320,10 @@ async function saveItem() {
 
 async function deleteItem(id) {
   try {
-    if (worldAPI.deleteItem) await worldAPI.deleteItem(pid(), id)
-    // 后端没有独立的 delete world API 时使用 PATCH 清空
-    settings.value = settings.value.filter(s => s.id !== id)
+    await settingsAPI.deleteWorldSetting(pid(), id)
     message.success('已删除')
-  } catch { message.success('已删除 (本地)') }
+    await loadData()
+  } catch (e) { message.error('删除失败') }
 }
 
 // ── AI 生成 ─────────────────────────────────────────────────────
@@ -348,14 +337,16 @@ async function confirmAiGenerate() {
   aiLoading.value = true
   try {
     message.info(`正在生成「${aiForm.value.name}」...`)
-    await new Promise(r => setTimeout(r, 2000))
+    await aiGenerateAPI.generateWorld(pid(), {
+      name: aiForm.value.name,
+      category: aiForm.value.category,
+      extra: aiForm.value.extra,
+    })
     message.success('AI 生成完成！')
     aiModalVisible.value = false
     await loadData()
-  } catch {
-    message.info('AI 生成完成 (演示模式)')
-    aiModalVisible.value = false
-    await loadData()
+  } catch (e) {
+    message.error('AI 生成失败: ' + (e.message || '未知错误'))
   } finally {
     aiLoading.value = false
   }

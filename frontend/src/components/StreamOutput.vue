@@ -165,7 +165,7 @@ import {
   CopyOutline,
   SaveOutline,
 } from '@vicons/ionicons5'
-import { useMessage, useClipboard } from 'naive-ui'
+import { useMessage } from 'naive-ui'
 
 const props = defineProps({
   endpoint: { type: String, required: true },
@@ -176,7 +176,7 @@ const props = defineProps({
 const emit = defineEmits(['done', 'save', 'error'])
 
 const message = useMessage()
-const { copy } = useClipboard()
+const copy = async (text) => { try { await navigator.clipboard.writeText(text); return true } catch { return false } }
 
 // ── 状态 ────────────────────────────────────────────────────────
 const status = ref('idle')            // idle | connecting | streaming | paused | done | error

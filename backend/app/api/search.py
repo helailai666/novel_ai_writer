@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.database import get_db
 from app.services.search_service import SearchService
 from app.agents.search_agent import SearchAgent
@@ -78,21 +79,16 @@ async def search_chapters(
 def _get_search_agent() -> SearchAgent:
     """创建 SearchAgent 实例"""
     return SearchAgent(
-        llm_provider=os.getenv("LLM_PROVIDER", "openai"),
-        model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-        api_key=os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "",
-        api_base=os.getenv("LLM_API_BASE"),
+        llm_provider="openai",
+        model=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY or "",
+        api_base=settings.LLM_API_BASE,
     )
 
 
 @router.post("/web", response_model=WebSearchResponse)
 async def search_web(payload: WebSearchRequest):
     """网络搜索（纯结果，无 AI 摘要）"""
-    results = await SearchService.search_web(
-        query=payload.query,
-        max_results=payload.max_results,
-    )
-
     structured = await SearchService.search_web_structured(
         query=payload.query,
         max_results=payload.max_results,
@@ -100,7 +96,7 @@ async def search_web(payload: WebSearchRequest):
 
     return WebSearchResponse(
         query=payload.query,
-        results=[WebSearchResult(**r) for r in results],
+        results=[WebSearchResult(**r) for r in structured.get("results", [])],
         summary=structured.get("summary", ""),
         source=structured.get("source", "unknown"),
     )

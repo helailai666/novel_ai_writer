@@ -25,8 +25,8 @@
         <n-form-item label="类型" path="genre">
           <n-select v-model:value="form.genre" :options="genreOpts" />
         </n-form-item>
-        <n-form-item label="风格">
-          <n-select v-model:value="form.style" :options="styleOpts" />
+        <n-form-item label="简介">
+          <n-input v-model:value="form.synopsis" type="textarea" :rows="3" placeholder="输入小说简介..." />
         </n-form-item>
       </n-form>
       <template #footer>
@@ -68,10 +68,9 @@ const showCreate = ref(false)
 const creating = ref(false)
 const search = ref('')
 const formRef = ref(null)
-const form = ref({ title: '', genre: '玄幻', style: '爽文' })
+const form = ref({ title: '', genre: '玄幻', synopsis: '' })
 
 const genreOpts = '玄幻,修仙,言情,科幻,悬疑,都市,历史,武侠'.split(',').map(v => ({ label: v, value: v }))
-const styleOpts = '爽文,慢热,甜宠,热血,悬疑,文艺'.split(',').map(v => ({ label: v, value: v }))
 const rules = { title: { required: true, message: '请输入标题', trigger: 'blur' }, genre: { required: true, message: '请选择类型', trigger: 'change' } }
 
 const stats = computed(() => {
@@ -95,9 +94,9 @@ async function load() {
 async function handleCreate() {
   creating.value = true
   try {
-    await projectAPI.createProject({ title: form.value.title, genre: form.value.genre, style: form.value.style })
+    await projectAPI.createProject({ title: form.value.title, genre: form.value.genre, synopsis: form.value.synopsis })
     showCreate.value = false
-    form.value = { title: '', genre: '玄幻', style: '爽文' }
+    form.value = { title: '', genre: '玄幻', synopsis: '' }
     await load()
   } catch { /* handled by interceptor */ }
   finally { creating.value = false }

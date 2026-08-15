@@ -100,6 +100,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { AddCircleOutline, SparklesOutline } from '@vicons/ionicons5'
+import { settingsAPI, aiGenerateAPI } from '../api/index.js'
 
 const route = useRoute()
 const message = useMessage()
@@ -131,14 +132,10 @@ function typeTag(t) { return { kingdom:'success', sect:'warning', clan:'info', h
 async function load() {
   loading.value = true
   try {
-    const { data } = await import('../api/index.js').then(m => m.default.getFactions ? m.default.getFactions(pid()) : Promise.reject())
-    factions.value = data?.data || data || []
+    const res = await settingsAPI.getFactions(pid())
+    factions.value = res.data?.data || res.data || []
   } catch {
-    factions.value = [
-      { id:1, name:'天剑宗', type:'sect', goal:'成为九州第一剑派', structure:'宗主→长老→核心弟子→内门→外门', notable_members:'林玄(核心弟子)、柳如烟(内门)' },
-      { id:2, name:'血煞门', type:'sect', goal:'统治修真界', structure:'门主→四大护法→血卫', notable_members:'血魔老祖(门主)' },
-      { id:3, name:'大夏王朝', type:'kingdom', goal:'统一九州', structure:'皇帝→六部→州牧→郡守', notable_members:'夏皇' },
-    ]
+    factions.value = []
   } finally { loading.value = false }
 }
 onMounted(load)
@@ -151,22 +148,43 @@ async function save() {
   try { await formRef.value?.validate() } catch { return }
   saving.value = true
   try {
-    message.success(editing.value ? '已更新' : '已创建')
+    if (editing.value) {
+      // 后端没有 faction update 端点，先删除再创建
+      await settingsAPI.deleteFaction(pid(), editing.value.id)
+      await settingsAPI.createFaction(pid(), form.value)
+      message.success('已更新')
+    } else {
+      await settingsAPI.createFaction(pid(), form.value)
+      message.success('已创建')
+    }
     drawerVisible.value = false; reset(); await load()
   } catch (e) { message.error('保存失败: ' + (e.message || ''))
   } finally { saving.value = false }
 }
 async function deleteFaction(id) {
-  factions.value = factions.value.filter(f => f.id !== id)
-  message.success('已删除')
+  try {
+    await settingsAPI.deleteFaction(pid(), id)
+    message.success('已删除')
+    await load()
+  } catch (e) { message.error('删除失败') }
 }
 function aiGenerate() { aiForm.value = { name:'', type:'sect' }; aiModal.value = true }
 async function confirmAi() {
   if (!aiForm.value.name) { message.error('请输入名称'); return }
   aiLoading.value = true
-  await new Promise(r => setTimeout(r, 1500))
-  message.success(`「${aiForm.value.name}」生成完成！`)
-  aiModal.value = false; aiLoading.value = false; await load()
+  try {
+    await aiGenerateAPI.generateFaction(pid(), {
+      name: aiForm.value.name,
+      category: aiForm.value.type,
+    })
+    message.success(`「${aiForm.value.name}」生成完成！`)
+    aiModal.value = false
+    await load()
+  } catch (e) {
+    message.error('生成失败: ' + (e.message || ''))
+  } finally {
+    aiLoading.value = false
+  }
 }
 </script>
 
