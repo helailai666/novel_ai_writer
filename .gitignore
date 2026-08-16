@@ -30,6 +30,7 @@ Thumbs.db
 
 # Docker
 docker-data/
+.mimocode/
 
 # 日志
 *.log
