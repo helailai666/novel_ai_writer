@@ -134,8 +134,8 @@ async def generate_chapter(project_id: str, payload: ChapterGenerateRequest, db:
 
 @router.post("/generate-stream")
 async def generate_chapter_stream(project_id: str, payload: ChapterGenerateRequest, db: AsyncSession = Depends(get_db)):
-    """AI 流式生成章节 — SSE (Server-Sent Events)"""
-    agent, stream = await WritingService.generate_chapter_stream(
+    """AI 流式生成章节 — SSE (Server-Sent Events)，事件类型见 app/agents/events.py"""
+    stream = await WritingService.generate_chapter_stream(
         db, project_id, payload.prompt, payload.volume_id, payload.chapter_number,
         payload.style, payload.target_word_count,
     )

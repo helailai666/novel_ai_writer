@@ -249,6 +249,61 @@ class SearchService:
             logger.error(f"DuckDuckGo search error: {e}")
             return []
 
+    # ── 网络搜索 + AI 摘要 ───────────────────────────────────────
+
+    @classmethod
+    async def search_and_summarize(
+        cls,
+        query: str,
+        max_results: int = 5,
+        context: dict = None,
+    ) -> Dict[str, Any]:
+        """搜索 + LLM 结构化摘要（core/llm 驱动，无 Key 自动降级 mock）
+
+        Returns:
+            {"content": str, "is_mock": bool, "results": [...], "source": str}
+        """
+        from app.core.llm import LLMMessage, create
+        from app.core.llm.providers.mock import MockProvider
+
+        results = await cls.search_web(query, max_results)
+        source = "tavily" if os.getenv("TAVILY_API_KEY") else "duckduckgo"
+        llm = create()
+
+        system = (
+            "You are a research assistant for novel writing. "
+            "Synthesize search results into useful references for the novelist. "
+            "Provide relevant facts, cultural details, historical context, or literary references "
+            "that can enrich the novel's world-building and plot development. Output in Chinese."
+        )
+
+        if results:
+            results_text = "\n\n".join(
+                f"[{i+1}] {r['title']}\n{r['snippet']}\n来源: {r['url']}"
+                for i, r in enumerate(results)
+            )
+            task = (
+                f"请根据以下搜索结果，为小说创作整理一份结构化参考：\n\n"
+                f"【搜索主题】{query}\n\n【搜索结果】\n{results_text}\n\n"
+                f"请输出：\n1. 核心知识点总结（3-5 条）\n2. 可用于小说的创意启发（2-3 条）\n"
+                f"3. 注意事项（避免常识错误）\n4. 推荐延伸搜索方向"
+            )
+        else:
+            task = (
+                f"请基于你的知识，为小说创作整理关于「{query}」的参考信息：\n\n"
+                f"请输出：\n1. 核心知识点总结（3-5 条）\n2. 可用于小说的创意启发（2-3 条）\n"
+                f"3. 注意事项（避免常识错误）\n4. 推荐延伸搜索方向\n\n"
+                f"（注：网络搜索不可用，请基于训练数据回答）"
+            )
+
+        resp = await llm.acomplete(_make_request(system, task))
+        return {
+            "content": resp.content,
+            "is_mock": isinstance(llm, MockProvider),
+            "results": results,
+            "source": source,
+        }
+
     # ── 缓存管理 ──────────────────────────────────────────────────
 
     @staticmethod
@@ -261,3 +316,15 @@ class SearchService:
         """清除搜索缓存"""
         cls._cache.clear()
         logger.info("Search cache cleared")
+
+
+def _make_request(system: str, user: str):
+    """构造 LLMRequest（延迟导入避免循环依赖）"""
+    from app.core.llm import LLMMessage, LLMRequest
+
+    return LLMRequest(
+        messages=[
+            LLMMessage(role="system", content=system),
+            LLMMessage(role="user", content=user),
+        ]
+    )

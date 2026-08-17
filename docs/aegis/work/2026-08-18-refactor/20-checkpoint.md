@@ -1,31 +1,41 @@
-# TodoCheckpointDraft — P1 完成（2026-08-18）
+# TodoCheckpointDraft — P2 完成（2026-08-18）
 
 ## 当前 todo / 活动切片
 
-- 当前切片: P1 目录分层 + Service 抽取（已完成，待提交）
-- 已完成 todos: P0 ✅（9e6fee5）、P1 ✅
-- 下一步: 提交 P1 → P2 LangGraph 核心
+- 当前切片: P2 LangGraph 核心（已完成）
+- 已完成: P0 ✅(9e6fee5) P1 ✅(4348526) P2 ✅
+- 下一步: P3 Tools 体系
 
-## P1 交付内容
+## P2 交付内容
 
-- Service 层: project_service / setting_service（9 模块通用 CRUD + AI 生成）/ writing_service / review_service / agent_factory（统一 Agent 构造）
-- API 薄层化: projects(155→~110 行) settings(662→~400 行) writing(441→~210 行) review(166→~80 行)；行为零变化
-- 搜索统一: SearchAgent.search_raw → SearchService.search_web（删除两份重复 Tavily/DDG 实现与独立缓存）
-- 修复: `/web/ai-summary` 双重搜索（缓存统一后自然消除）、`/web/cache/clear` 失效调用、**导出中文文件名 latin-1 500 崩溃（RFC 5987 filename*）**
-- 新增: app/core/ 层骨架、app/deps.py、pytest.ini、tests/test_api_parity.py（路由↔前端对照测试，含 `${dimension}` 闭集展开）
+- core/llm 多供应商层: schemas / base(LLMProvider) / providers(openai_compat 万能适配、mock、anthropic、gemini、ollama、azure) / factory(注册表+自动降级)
+- agents 编排层: state(NovelState) / events(SSE 协议 8 类事件) / runner(GraphRunner: astream updates→事件桥接 + agent_runs 入库)
+- 三条图: setting_graph(assemble→路由→7生成节点→consistency→persist)、chapter_graph(retrieve→write流式→review→rewrite循环→persist)、review_graph(Send 并行 8 维→聚合)
+- nodes 迁移: 旧 Creative/Writer/Review 提示词与任务构造全部迁入 nodes/common.py；**旧 5 个 legacy Agent 文件删除**
+- 服务切换: setting/writing/review service 的 AI 执行全部走图（单一执行路径，无并行残留）
+- 新增: /api/agents/chat(SSE) + /run + /runs；agent_runs 表(M13)；搜索摘要统一到 SearchService(core/llm)
+- 测试: tests/test_graphs.py（setting 持久化 / chapter 重写循环 / review 并行）+ conftest(临时DB+强制mock)
+
+## 过程中发现并修复的 Bug
+
+1. LangGraph v1 节点返回值只能含 state 字段（多余键被静默丢弃）→ Send spike 发现
+2. with_structured 传 {"type":"json_object"} 无效 → 改用 response_format 绑定 + 兼容实现
+3. messages() 返回 list 误传给 acomplete/astream（需 LLMRequest 包装）
+4. **图节点会话未 commit 导致事务回滚**（assemble 可读、persist 必须 commit）→ setting/chapter 持久化节点补 commit；runner 的 agent_runs 同病同修
+5. 重写循环缺 revision_round 递增 → 无限循环到 recursion limit；write_draft 现递增 + should_rewrite 加"无草稿即 persist"守卫
 
 ## 证据
 
-- `pytest tests/` → 2 passed（parity 全绿）
-- mock 模式全链路冒烟: project/world/character CRUD、AI generate-world、volume/chapter、generate/continue/polish、review consistency+comprehensive、search web、export（中文名 200）、SSE stream（chunk/done/saved 事件齐全）、batch-generate(2)
-- 22 处历史失配核对: 当前代码大多已修复（FK/CORS/body 传参等），对照测试建立防回归屏障
+- pytest 5 passed（parity 2 + graphs 3）
+- e2e mock 冒烟: setting world/character 200+saved、chapter generate/continue/polish 200、SSE 事件齐全(token×387/node/review/checkpoint/done)、review 单维/综合 200、agents/run 并行维度 {logic,pacing}、agents/chat 8 事件、runs 入库 completed
+- 真实环境路径: factory 从 settings.llm 解析用户 .env 的 MiMo(openai 兼容) 端点
 
 ## 漂移检查（DriftCheckDraft）
 
-- 范围: 未越界；兼容边界保持（端点路径/响应形状未变）
-- 退休: search_agent 内部重复实现已删；app/agents/* 遗留至 P2 迁移
+- 范围: 未越界；兼容边界: 现有 REST 路径不变（generate-stream 事件协议升级为类型化，P7 前端适配）
+- 退休: legacy agents 全部删除 ✅；agent_factory 删除 ✅
 - 决策: continue
 
 ## 恢复提示（ResumeStateHint）
 
-- 恢复点: 提交 P1 后进入 P2（LangGraph state/events/runner + 三条图 + nodes 迁移旧 Agent 逻辑 + /api/agents/chat SSE + agent_runs 表）
+- 恢复点: P3 Tools 体系（BaseTool/ToolRegistry/内置工具/web_search+knowledge_retrieve+setting_query 等/图绑定白名单/tool 事件）

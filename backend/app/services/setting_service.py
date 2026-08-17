@@ -19,7 +19,6 @@ from app.models.outline import Outline
 from app.models.location import Location
 from app.models.timeline import Timeline
 from app.models.foreshadow import Foreshadow
-from app.services.agent_factory import get_creative_agent
 
 
 # ── 模块注册表 ────────────────────────────────────────────────────
@@ -113,90 +112,52 @@ class SettingService:
         await db.delete(obj)
         await db.flush()
 
-    # ── AI 生成（P2 起由 LangGraph 节点替代内部 agent 调用）────────
+    # ── AI 生成（LangGraph setting 图驱动；生成+持久化在图内完成）──
 
     @staticmethod
     async def ai_generate_world(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        """AI 生成世界观设定并自动保存"""
-        agent = get_creative_agent()
-        result = await db.execute(select(WorldSetting).where(WorldSetting.project_id == project_id))
-        existing = [
-            {"name": ws.name, "category": ws.category, "content": ws.content[:200]}
-            for ws in result.scalars().all()
-        ]
-        gen = await agent.generate_world_setting(name=name, category=category, context={"existing_settings": existing})
-        if not gen.success:
-            raise HTTPException(status_code=500, detail=f"生成失败: {gen.error}")
-        ws = WorldSetting(project_id=project_id, name=name, category=category, content=gen.content)
-        db.add(ws)
-        await db.flush()
-        return {"content": gen.content, "is_mock": agent.is_mock}
+        """AI 生成世界观设定（setting 图）"""
+        return await _run_setting_graph(project_id, "world", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_character(db: AsyncSession, project_id: str, name: str, role: str, category: str, extra: str = "") -> dict:
-        agent = get_creative_agent()
-        result = await db.execute(select(WorldSetting).where(WorldSetting.project_id == project_id))
-        world_context = "\n".join(f"{ws.name}: {ws.content[:300]}" for ws in result.scalars().all())
-        gen = await agent.generate_character(name=name, role=role, context={"world_setting": world_context, "extra": extra})
-        if not gen.success:
-            raise HTTPException(status_code=500, detail=f"生成失败: {gen.error}")
-        char = Character(project_id=project_id, name=name, role=role, background=gen.content)
-        db.add(char)
-        await db.flush()
-        return {"content": gen.content, "is_mock": agent.is_mock}
+        return await _run_setting_graph(project_id, "character", name, category, role=role, extra=extra)
 
     @staticmethod
     async def ai_generate_item(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        agent = get_creative_agent()
-        gen = await agent.generate_item(name=name, category=category)
-        if not gen.success:
-            raise HTTPException(status_code=500, detail=f"生成失败: {gen.error}")
-        item = Item(project_id=project_id, name=name, category=category, description=gen.content)
-        db.add(item)
-        await db.flush()
-        return {"content": gen.content, "is_mock": agent.is_mock}
+        return await _run_setting_graph(project_id, "item", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_skill(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        agent = get_creative_agent()
-        gen = await agent.generate_skill(name=name, category=category)
-        if not gen.success:
-            raise HTTPException(status_code=500, detail=f"生成失败: {gen.error}")
-        skill = Skill(project_id=project_id, name=name, category=category, description=gen.content)
-        db.add(skill)
-        await db.flush()
-        return {"content": gen.content, "is_mock": agent.is_mock}
+        return await _run_setting_graph(project_id, "skill", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_faction(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        agent = get_creative_agent()
-        gen = await agent.generate_faction(name=name, faction_type=category)
-        if not gen.success:
-            raise HTTPException(status_code=500, detail=f"生成失败: {gen.error}")
-        faction = Faction(project_id=project_id, name=name, type=category, goal=gen.content)
-        db.add(faction)
-        await db.flush()
-        return {"content": gen.content, "is_mock": agent.is_mock}
+        return await _run_setting_graph(project_id, "faction", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_location(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        agent = get_creative_agent()
-        gen = await agent.generate_location(name=name, category=category)
-        if not gen.success:
-            raise HTTPException(status_code=500, detail=f"生成失败: {gen.error}")
-        loc = Location(project_id=project_id, name=name, category=category, description=gen.content)
-        db.add(loc)
-        await db.flush()
-        return {"content": gen.content, "is_mock": agent.is_mock}
+        return await _run_setting_graph(project_id, "location", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_outline(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        agent = get_creative_agent()
-        level = int(category) if category.isdigit() else 1
-        gen = await agent.generate_outline(title=name, level=level)
-        if not gen.success:
-            raise HTTPException(status_code=500, detail=f"生成失败: {gen.error}")
-        outline = Outline(project_id=project_id, title=name, summary=gen.content)
-        db.add(outline)
-        await db.flush()
-        return {"content": gen.content, "is_mock": agent.is_mock}
+        return await _run_setting_graph(project_id, "outline", name, category, extra=extra)
+
+
+async def _run_setting_graph(project_id: str, kind: str, name: str, category: str, role: str = "", extra: str = "") -> dict:
+    """运行 setting 图并返回 {content, is_mock}（生成+持久化在图内完成）"""
+    from app.agents.runner import get_runner
+
+    state = {
+        "graph": "setting", "project_id": project_id,
+        "task": f"生成{kind}设定 {name}", "kind": kind,
+        "name": name, "category": category, "role": role or None, "extra": extra,
+        "settings_snapshot": {}, "knowledge": [], "draft": None,
+        "review": {}, "reviews": [], "revision_round": 0,
+        "max_revisions": 2, "review_threshold": 75,
+        "final_output": {}, "events": [], "run_id": None,
+    }
+    result = await get_runner().ainvoke("setting", state)
+    if result.get("error") and not result.get("content"):
+        raise HTTPException(status_code=500, detail=f"生成失败: {result['error']}")
+    return {"content": result.get("content", ""), "is_mock": result.get("is_mock", True)}

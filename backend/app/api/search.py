@@ -1,16 +1,13 @@
 """搜索 API — 本地搜索 + 网络搜索"""
 
-import os
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
-from app.config import settings
 from app.database import get_db
 from app.services.search_service import SearchService
-from app.agents.search_agent import SearchAgent
 
 logger = logging.getLogger(__name__)
 
@@ -76,16 +73,6 @@ async def search_chapters(
 
 # ── 网络搜索 ────────────────────────────────────────────────────
 
-def _get_search_agent() -> SearchAgent:
-    """创建 SearchAgent 实例"""
-    return SearchAgent(
-        llm_provider="openai",
-        model=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY or "",
-        api_base=settings.LLM_API_BASE,
-    )
-
-
 @router.post("/web", response_model=WebSearchResponse)
 async def search_web(payload: WebSearchRequest):
     """网络搜索（纯结果，无 AI 摘要）"""
@@ -104,29 +91,19 @@ async def search_web(payload: WebSearchRequest):
 
 @router.post("/web/ai-summary", response_model=WebSearchResponse)
 async def search_web_with_ai(payload: WebSearchRequest):
-    """网络搜索 + AI 摘要"""
-    agent = _get_search_agent()
-
-    # 执行搜索 + LLM 摘要
-    from app.agents.agent_base import AgentResult
-    result = await agent.search_and_summarize(
-        query=payload.query,
-        max_results=payload.max_results,
-    )
-
-    # 获取原始搜索结果
-    raw_results = await SearchService.search_web(
+    """网络搜索 + AI 摘要（core/llm 驱动，无 Key 自动降级 mock）"""
+    result = await SearchService.search_and_summarize(
         query=payload.query,
         max_results=payload.max_results,
     )
 
     return WebSearchResponse(
         query=payload.query,
-        results=[WebSearchResult(**r) for r in raw_results],
+        results=[WebSearchResult(**r) for r in result.get("results", [])],
         summary="",
-        ai_summary=result.content if result.success else f"摘要失败: {result.error}",
-        source="tavily" if os.getenv("TAVILY_API_KEY") else "duckduckgo",
-        is_mock=agent.is_mock,
+        ai_summary=result.get("content", ""),
+        source=result.get("source", "duckduckgo"),
+        is_mock=result.get("is_mock", False),
     )
 
 
