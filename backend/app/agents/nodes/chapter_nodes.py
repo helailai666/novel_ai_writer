@@ -103,8 +103,24 @@ def _build_writing_task(state: NovelState) -> str:
     return task
 
 
+# 写作图工具白名单（P3：设定/角色/兵器/世界观/伏笔查询 + 搜索；P4 增补知识检索/热梗）
+WRITER_TOOL_NAMES = [
+    "setting_query",
+    "character_lookup",
+    "weapon_lookup",
+    "world_setting_lookup",
+    "foreshadow_query",
+    "web_search",
+    "knowledge_retrieve",
+    "hot_meme_lookup",
+]
+
+
 async def write_draft(state: NovelState) -> dict:
-    """流式写作：产出 token 事件 + 完整草稿"""
+    """流式写作：产出 token 事件 + 完整草稿
+
+    generate/rewrite 模式启用工具循环（ReAct）；continue/polish 保持纯流式打字机。
+    """
     from app.core.llm import LLMRequest
 
     node = "write_draft"
@@ -114,6 +130,30 @@ async def write_draft(state: NovelState) -> dict:
     context_text = _context_text(state)
     user_msg = f"【上下文】\n{context_text or '无'}\n\n【任务】\n{task}" if context_text else task
     try:
+        mode = state.get("mode") or "generate"
+        if mode in ("generate", "rewrite"):
+            # 工具循环路径（ReAct）：writer 可自主查询设定/兵器/世界观/搜索
+            from app.agents.nodes.tool_loop import resolve_tools, run_tool_loop
+
+            tools = resolve_tools(WRITER_TOOL_NAMES)
+
+            async def _emit(ev: dict):
+                evs.append(ev)
+
+            if tools:
+                _, final_text = await run_tool_loop(llm, WRITER_SYSTEM, user_msg, tools, emit=_emit)
+                content = final_text.strip()
+                if content:
+                    # 最终文本作为单条 token 事件输出（保持 SSE 兼容）
+                    evs.append(events.token(content))
+                return {
+                    "draft": content,
+                    "revision_round": (state.get("revision_round") or 0) + 1,
+                    "events": evs + [events.node_end(node)],
+                    "final_output": {"content": content, "is_mock": is_mock_provider(llm)},
+                }
+
+        # 纯流式路径（无工具或 continue/polish）
         full = ""
         mock = is_mock_provider(llm)
         async for chunk in llm.astream(LLMRequest(messages=messages(WRITER_SYSTEM, user_msg))):

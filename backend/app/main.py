@@ -44,6 +44,7 @@ from app.api.writing import router as writing_router
 from app.api.review import router as review_router
 from app.api.search import router as search_router
 from app.api.agents import router as agents_router
+from app.api.tools import router as tools_router
 
 app.include_router(projects_router)
 app.include_router(settings_router)
@@ -51,6 +52,7 @@ app.include_router(writing_router)
 app.include_router(review_router)
 app.include_router(search_router)
 app.include_router(agents_router)
+app.include_router(tools_router)
 
 
 # ── 健康检查 ─────────────────────────────────────────────────────

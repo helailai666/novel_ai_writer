@@ -32,22 +32,6 @@ class FakeScoreProvider(MockProvider):
 
 
 @pytest.fixture
-async def db():
-    """临时数据库：建表 + 一个测试项目（显式 commit）"""
-    from app.database import async_session_factory, init_db
-    from app.services.project_service import ProjectService
-
-    await init_db()
-    async with async_session_factory() as session:
-        pid = (await ProjectService.create(session, {"title": "图测试", "genre": "玄幻"}))["id"]
-        await session.commit()
-    yield pid
-    async with async_session_factory() as session:
-        await ProjectService.delete(session, pid)
-        await session.commit()
-
-
-@pytest.fixture
 def mock_llm(monkeypatch):
     """替换 common.create 为 FakeScoreProvider（通过返回的 dict 控制评分）"""
     import app.agents.nodes.common as common
