@@ -28,6 +28,7 @@ class ProjectUpdate(BaseModel):
     genre: Optional[str] = Field(None, max_length=50)
     synopsis: Optional[str] = Field(None, max_length=2000)
     status: Optional[str] = Field(None, max_length=20)
+    skill_packs: Optional[str] = Field(None, max_length=300, description="逗号分隔的技能包名")
 
 
 class ProjectResponse(BaseModel):
@@ -36,6 +37,7 @@ class ProjectResponse(BaseModel):
     genre: str
     synopsis: str
     status: str
+    skill_packs: str = ""
     created_at: str
     updated_at: str
 

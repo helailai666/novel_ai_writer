@@ -48,6 +48,12 @@ async def retrieve_context(state: NovelState) -> dict:
             if proj:
                 snapshot["project"] = {"title": proj.title, "genre": proj.genre, "synopsis": proj.synopsis}
 
+            # 项目级技能（请求未显式指定时使用项目配置）
+            project_skills = None
+            if proj and proj.skill_packs and not state.get("skills"):
+                project_skills = [s.strip() for s in proj.skill_packs.split(",") if s.strip()]
+                snapshot["project"]["skills"] = project_skills
+
             for model in (WorldSetting, Character, Item):
                 rows = (await db.execute(select(model).where(model.project_id == pid))).scalars().all()
                 for r in rows:
@@ -82,7 +88,10 @@ async def retrieve_context(state: NovelState) -> dict:
     except Exception as e:
         logger.warning(f"retrieve_context failed: {e}")
     evs.append(events.node_end("retrieve_context"))
-    return {"settings_snapshot": snapshot, "knowledge": knowledge, "events": evs}
+    ret: dict = {"settings_snapshot": snapshot, "knowledge": knowledge, "events": evs}
+    if "project_skills" in locals() and project_skills:
+        ret["skills"] = project_skills
+    return ret
 
 
 def _context_text(state: NovelState) -> str:

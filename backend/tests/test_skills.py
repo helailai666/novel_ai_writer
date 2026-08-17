@@ -107,3 +107,37 @@ async def test_supervisor_graph_routes_setting(monkeypatch, db):
     result = await get_runner().ainvoke("chat", state)
     assert result.get("content"), "chat 图应产出世界观内容"
     assert result.get("is_mock") is True
+
+
+async def test_project_level_skills_injected(monkeypatch, db):
+    """项目配置技能（无请求级 skills）应自动注入写作图"""
+    import app.agents.nodes.common as common
+
+    llm = RecordingLLM(model="mock")
+
+    def _create(*args, **kwargs):
+        return llm
+
+    monkeypatch.setattr(common, "create", _create)
+
+    # 给项目设置技能
+    from app.database import async_session_factory
+    from app.services.project_service import ProjectService
+
+    async with async_session_factory() as session:
+        await ProjectService.update(session, db, {"skill_packs": "webnovel-standards"})
+        await session.commit()
+
+    from app.agents.runner import get_runner
+
+    state = {
+        "graph": "chapter", "project_id": db, "mode": "generate",
+        "prompt": "第一章", "style": "narrative", "target_word_count": 100,
+        "chapter_number": 1, "volume_id": None,
+        "settings_snapshot": {}, "knowledge": [], "draft": None,
+        "review": {}, "reviews": [], "revision_round": 0,
+        "max_revisions": 2, "review_threshold": 75,
+        "final_output": {}, "events": [], "run_id": None,
+    }
+    await get_runner().ainvoke("chapter", state)
+    assert "黄金三章" in llm.last_system, "项目级技能应注入 system prompt"

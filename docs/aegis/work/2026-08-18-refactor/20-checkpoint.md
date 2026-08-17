@@ -100,3 +100,14 @@
 ## 恢复提示
 
 - 无遗留阻塞；后续可扩展: supervisor LLM 分类、项目级技能绑定、faiss/qdrant 后端、Redis 缓存
+
+# F 轮收尾（2026-08-18 追加）— 跟进项全部完成
+
+1. ✅ setting 图 7 个 generate 节点接入 ReAct 工具循环（web_search/knowledge_retrieve/setting_query 白名单 + 技能注入）——补全计划 §4.2 承诺
+2. ✅ test_api_integration.py 8 项（项目CRUD/AI生成/SSE类型事件/审核/chat路由/知识热梗/工具技能供应商）
+3. ✅ 外部 MCP 桥接工具被写作图调用 e2e（mcp_fake2_echo）
+4. ✅ 项目级技能绑定: Project.skill_packs 列 + Alembic 0002 幂等迁移（含表/列守卫）+ setting/chapter 图自动读取 + 前端 SettingsView 技能开关
+   - 关键修复: 列名 skills 与 M4 技能 relationship 重名触发懒加载 MissingGreenlet → 改名 skill_packs（含真实 DB 列修复 + 前端字段）
+5. ✅ 全量回归: pytest 37 passed、npm build 成功、验收冒烟通过
+
+- 提交后总计 38 项测试（parity2 + graphs3 + tools6 + knowledge5 + mcp3 + skills10 + api_integration8 + api_parity…）

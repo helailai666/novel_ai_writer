@@ -73,3 +73,64 @@ async def test_mcp_client_bridges_external_server(tmp_path):
     result = await registry.execute("mcp_fake_echo", {"text": "你好"})
     assert result.ok is True and "echo:你好" in result.content
     assert registry.get("mcp_fake_echo").description.startswith("[MCP:fake]")
+
+
+async def test_bridged_external_tool_used_by_writer(tmp_path, db):
+    """外部 MCP 工具桥接后，写作图 ReAct 工具循环可真实调用它"""
+    import app.agents.nodes.common as common
+    from app.core.llm.providers.mock import MockProvider
+    from app.core.llm.schemas import LLMRequest, LLMResponse, ToolCall
+
+    # 1) 桥接一个独立命名的 fake echo server
+    server_file = tmp_path / "fake_mcp_server2.py"
+    server_file.write_text(FAKE_MCP_SERVER, encoding="utf-8")
+    cfg = {"name": "fake2", "transport": "stdio", "command": sys.executable, "args": [str(server_file)]}
+    from app.core.mcp.client import bridge_mcp_server
+    from app.core.tools.registry import get_registry
+
+    registry = get_registry()
+    bridged = await bridge_mcp_server(cfg, registry)
+    assert "mcp_fake2_echo" in bridged
+
+    # 2) Fake LLM：第一轮调用外部工具，第二轮成稿
+    class FakeExternalLLM(MockProvider):
+        call_count = 0
+
+        async def acomplete(self, req: LLMRequest) -> LLMResponse:
+            self.call_count += 1
+            if self.call_count == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(id="c1", name="mcp_fake2_echo", arguments={"text": "写作前先回声"})],
+                    usage={"mock": True}, is_mock=True,
+                )
+            return LLMResponse(content="正文成稿", usage={"mock": True}, is_mock=True)
+
+    fake = FakeExternalLLM(model="mock")
+
+    def _create(*args, **kwargs):
+        return fake
+
+    monkeypatch = __import__("pytest").MonkeyPatch()
+    monkeypatch.setattr(common, "create", _create)
+
+    # 3) 跑写作图
+    from app.agents.runner import get_runner
+
+    state = {
+        "graph": "chapter", "project_id": db, "mode": "generate",
+        "prompt": "第一章", "style": "narrative", "target_word_count": 100,
+        "chapter_number": 1, "volume_id": None,
+        "settings_snapshot": {}, "knowledge": [], "draft": None,
+        "review": {}, "reviews": [], "revision_round": 0,
+        "max_revisions": 2, "review_threshold": 75,
+        "final_output": {}, "events": [], "run_id": None,
+    }
+    events_list = []
+    async for ev in get_runner().astream("chapter", state):
+        events_list.append(ev)
+
+    tool_calls = [e for e in events_list if e["type"] == "tool_call"]
+    assert any(e["tool"] == "mcp_fake2_echo" for e in tool_calls), "writer 应调用桥接的外部 MCP 工具"
+    done = [e for e in events_list if e["type"] == "done"][-1]
+    assert done["result"].get("saved") is True

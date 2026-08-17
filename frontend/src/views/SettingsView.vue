@@ -3,6 +3,18 @@
     <template #title>🌍 设定管理</template>
   </n-page-header>
 
+  <!-- 项目级技能包 -->
+  <n-card title="🎯 项目技能包（写作/设定生成时自动注入）" size="small" style="margin-top:16px">
+    <n-space vertical>
+      <n-checkbox-group v-model:value="projectSkills" @update:value="saveSkills">
+        <n-space>
+          <n-checkbox v-for="s in skillList" :key="s.name" :value="s.name" :label="`${s.name}（${s.description}）`" />
+        </n-space>
+      </n-checkbox-group>
+      <n-text depth="3" style="font-size:12px">技能将注入生成时的 system prompt 并合并工具白名单；请求级 skills 字段优先。</n-text>
+    </n-space>
+  </n-card>
+
   <n-tabs type="line" default-value="world" style="margin-top:20px;">
     <n-tab-pane name="world" tab="🌍 世界观">
       <n-card>
@@ -95,11 +107,34 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
-import { settingsAPI, aiGenerateAPI } from '../api/index.js'
+import { settingsAPI, aiGenerateAPI, projectAPI, skillsAPI } from '../api/index.js'
 
 const route = useRoute()
 const message = useMessage()
 const pid = () => route.params.id
+
+// ── 项目级技能 ────────────────────────────────────────────────
+const skillList = ref([])
+const projectSkills = ref([])
+
+async function loadSkills() {
+  try {
+    const s = await skillsAPI.list()
+    skillList.value = s.data.skills || []
+    const p = await projectAPI.getProject(pid())
+    projectSkills.value = (p.data.skill_packs || '').split(',').filter(Boolean)
+  } catch { /* 忽略 */ }
+}
+
+async function saveSkills() {
+  try {
+    await projectAPI.updateProject(pid(), { skills: projectSkills.value.join(',') })
+    message.success('项目技能已保存')
+  } catch (e) {
+    message.error(e.message || '保存失败')
+  }
+}
+// ─────────────────────────────────────────────────────────────
 
 const aiLoad = reactive({ world: false, character: false, item: false, skill: false, faction: false, outline: false })
 
@@ -156,5 +191,8 @@ async function aiGenerate(module) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadSkills()
+})
 </script>

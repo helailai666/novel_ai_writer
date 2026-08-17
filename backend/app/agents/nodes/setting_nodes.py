@@ -18,10 +18,14 @@ from app.agents.nodes.common import (
     build_outline_task,
     build_skill_task,
     build_world_task,
+    enhance_system,
     is_mock_provider,
     messages,
     resolve_llm,
 )
+
+# 设定图工具白名单（P3 补全）：查证参考 / 知识库 / 已有设定
+SETTING_TOOL_NAMES = ["web_search", "knowledge_retrieve", "setting_query"]
 from app.agents.state import NovelState
 from app.database import async_session_factory
 from app.models.character import Character
@@ -46,6 +50,10 @@ async def assemble_context(state: NovelState) -> dict:
             project = result.scalar_one_or_none()
             if project:
                 snapshot["project"] = {"title": project.title, "genre": project.genre, "synopsis": project.synopsis}
+            # 项目级技能（请求未显式指定时使用项目配置）
+            project_skills = None
+            if project and project.skill_packs and not state.get("skills"):
+                project_skills = [s.strip() for s in project.skill_packs.split(",") if s.strip()]
             for model in (WorldSetting, Character, Item, Skill, Faction):
                 rows = (await db.execute(select(model).where(model.project_id == state["project_id"]))).scalars().all()
                 cols = [c.name for c in model.__table__.columns if c.name not in ("id", "project_id", "created_at", "updated_at")]
@@ -54,7 +62,10 @@ async def assemble_context(state: NovelState) -> dict:
                 ]
     except Exception as e:  # 上下文加载失败不阻断生成
         logger.warning(f"assemble_context failed: {e}")
-    return {"settings_snapshot": snapshot, "events": evs}
+    ret: dict = {"settings_snapshot": snapshot, "events": evs}
+    if "project_skills" in locals() and project_skills:
+        ret["skills"] = project_skills
+    return ret
 
 
 def route_kind(state: NovelState) -> str:
@@ -63,14 +74,28 @@ def route_kind(state: NovelState) -> str:
 
 
 async def _generate(state: NovelState, task: str, node_name: str = "generate") -> dict:
-    """通用生成：调用 LLM，产出 draft + final_output"""
+    """通用生成：调用 LLM（可启用工具循环），产出 draft + final_output
+
+    工具白名单: web_search（查证参考）/ knowledge_retrieve（知识库）/ setting_query（已有设定）
+    """
     from app.core.llm import LLMRequest
 
     llm = resolve_llm(state)
     evs = [events.node_start(node_name)]
     try:
-        resp = await llm.acomplete(LLMRequest(messages=messages(CREATIVE_SYSTEM, task)))
-        content = resp.content.strip()
+        system = enhance_system(state, CREATIVE_SYSTEM)
+        from app.agents.nodes.tool_loop import resolve_tools, run_tool_loop
+
+        tools = resolve_tools(SETTING_TOOL_NAMES)
+        if tools:
+            async def _emit(ev: dict):
+                evs.append(ev)
+
+            _, final_text = await run_tool_loop(llm, system, task, tools, emit=_emit)
+            content = final_text.strip()
+        else:
+            resp = await llm.acomplete(LLMRequest(messages=messages(system, task)))
+            content = resp.content.strip()
         mock = is_mock_provider(llm)
         return {
             "draft": content,

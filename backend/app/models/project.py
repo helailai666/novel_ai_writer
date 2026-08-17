@@ -22,6 +22,10 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
+    # 项目级技能包（逗号分隔技能名，如 "webnovel-standards,genre-xuanhuan"）
+    # 注意：勿命名为 skills，与 M4 技能 relationship 重名
+    skill_packs: Mapped[str] = mapped_column(String(300), default="")
+
     # 关联
     world_settings: Mapped[list["WorldSetting"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     characters: Mapped[list["Character"]] = relationship(back_populates="project", cascade="all, delete-orphan")
