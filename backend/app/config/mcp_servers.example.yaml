@@ -1,0 +1,27 @@
+# ─── NovelAI Writer MCP 外部服务器配置示例 ─────────────────────────
+# 复制为 config/mcp_servers.yaml 并填写。客户端桥接的外部 MCP server
+# 的工具将以 mcp_<name>_<tool> 名称注册进工具注册表，供 Agent 调用。
+#
+# transport:
+#   - stdio: 通过命令启动的子进程（如文件系统 MCP server）
+#   - sse:   通过 SSE URL 连接的远程服务
+
+servers:
+  # 示例 1：stdio 传输（本地 MCP 服务进程）
+  - name: filesystem
+    enabled: false
+    transport: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "/tmp"
+    # 允许桥接的工具白名单（留空 = 全部）
+    tool_allowlist: []
+
+  # 示例 2：SSE 传输（远程 MCP 服务）
+  - name: remote-knowledge
+    enabled: false
+    transport: sse
+    url: "http://127.0.0.1:9000/sse"
+    tool_allowlist: []
