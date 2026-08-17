@@ -41,6 +41,7 @@ class AgentChatRequest(BaseModel):
     content: Optional[str] = Field(None, description="待审核/润色内容")
     context: Optional[str] = Field(None, description="补充上下文")
     dimensions: Optional[list[str]] = Field(None, description="审核维度列表")
+    skills: Optional[list[str]] = Field(None, description="启用的技能包名列表")
     model: Optional[str] = Field(None, description="供应商/模型覆盖，如 deepseek:deepseek-chat")
 
     def to_state(self) -> NovelState:
@@ -61,6 +62,7 @@ class AgentChatRequest(BaseModel):
             "content": self.content,
             "context": self.context,
             "dimensions": self.dimensions,
+            "skills": self.skills,
             "model": self.model,
             "settings_snapshot": {},
             "knowledge": [],

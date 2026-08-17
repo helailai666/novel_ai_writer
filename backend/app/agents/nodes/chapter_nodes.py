@@ -18,9 +18,11 @@ from app.agents.nodes.common import (
     build_continue_task,
     build_polish_task,
     build_review_task,
+    enhance_system,
     is_mock_provider,
     messages,
     resolve_llm,
+    skill_context,
 )
 from app.agents.state import NovelState
 from app.database import async_session_factory
@@ -157,13 +159,15 @@ async def write_draft(state: NovelState) -> dict:
             # 工具循环路径（ReAct）：writer 可自主查询设定/兵器/世界观/搜索
             from app.agents.nodes.tool_loop import resolve_tools, run_tool_loop
 
-            tools = resolve_tools(WRITER_TOOL_NAMES)
+            system = enhance_system(state, WRITER_SYSTEM)
+            ctx = skill_context(state)
+            tools = resolve_tools(list(dict.fromkeys(WRITER_TOOL_NAMES + ctx["tools"])))
 
             async def _emit(ev: dict):
                 evs.append(ev)
 
             if tools:
-                _, final_text = await run_tool_loop(llm, WRITER_SYSTEM, user_msg, tools, emit=_emit)
+                _, final_text = await run_tool_loop(llm, system, user_msg, tools, emit=_emit)
                 content = final_text.strip()
                 if content:
                     # 最终文本作为单条 token 事件输出（保持 SSE 兼容）
@@ -178,7 +182,8 @@ async def write_draft(state: NovelState) -> dict:
         # 纯流式路径（无工具或 continue/polish）
         full = ""
         mock = is_mock_provider(llm)
-        async for chunk in llm.astream(LLMRequest(messages=messages(WRITER_SYSTEM, user_msg))):
+        system = enhance_system(state, WRITER_SYSTEM)
+        async for chunk in llm.astream(LLMRequest(messages=messages(system, user_msg))):
             if chunk:
                 full += chunk
                 evs.append(events.token(chunk))
@@ -203,9 +208,10 @@ async def review_draft(state: NovelState) -> dict:
     try:
         from app.core.llm import LLMRequest
 
+        system = enhance_system(state, REVIEWER_SYSTEM)
         resp = await llm.acomplete(
             LLMRequest(
-                messages=messages(REVIEWER_SYSTEM, build_review_task("comprehensive", content, state.get("context") or "")),
+                messages=messages(system, build_review_task("comprehensive", content, state.get("context") or "")),
                 response_format=REVIEW_JSON_SCHEMA,
             )
         )

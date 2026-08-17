@@ -29,6 +29,27 @@ def messages(system: str, user: str) -> list[LLMMessage]:
     return [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)]
 
 
+def skill_context(state: NovelState) -> dict:
+    """按 state.skills 组装技能注入内容：{prompt, tools, knowledge_refs}"""
+    names = state.get("skills") or []
+    if not names:
+        return {"prompt": "", "tools": [], "knowledge_refs": []}
+    try:
+        from app.core.skills import get_runner
+
+        return get_runner().apply(names)
+    except Exception:
+        return {"prompt": "", "tools": [], "knowledge_refs": []}
+
+
+def enhance_system(state: NovelState, base_system: str) -> str:
+    """把技能 prompt 追加到系统提示词"""
+    ctx = skill_context(state)
+    if ctx["prompt"]:
+        return f"{base_system}\n\n{ctx['prompt']}"
+    return base_system
+
+
 # ── 提示词（迁移自旧 agent_base / creative / writer / review）────────
 
 CREATIVE_SYSTEM = """You are a creative novelist and world-builder assistant.

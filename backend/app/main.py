@@ -57,6 +57,7 @@ from app.api.tools import router as tools_router
 from app.api.knowledge import router as knowledge_router
 from app.api.hot_memes import router as hot_memes_router
 from app.api.mcp import router as mcp_router
+from app.api.skills import router as skills_router
 
 app.include_router(projects_router)
 app.include_router(settings_router)
@@ -68,6 +69,7 @@ app.include_router(tools_router)
 app.include_router(knowledge_router)
 app.include_router(hot_memes_router)
 app.include_router(mcp_router)
+app.include_router(skills_router)
 
 
 # ── 健康检查 ─────────────────────────────────────────────────────

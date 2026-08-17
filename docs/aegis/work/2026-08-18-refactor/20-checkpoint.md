@@ -47,3 +47,14 @@
 - 修复: mcp 2.0 移除 fastmcp→MCPServer；Tool.input_schema 属性名；抽象类实例化；代码生成参数顺序/初始化
 - 测试: test_mcp.py 2 项（服务端 stdio 握手真实工具调用 / 客户端桥接 fake server）
 - pytest 18 passed
+
+# P6 完成（2026-08-18 追加）
+
+- core/skills: models(SKILL.md frontmatter 解析) + registry(目录扫描) + runner(注入组装)
+- 内置 6 技能包: webnovel-standards / character-arc / foreshadow-manager / pacing-control / prose-polish / genre-xuanhuan（backend/skills/）
+- 图注入: state.skills → enhance_system(追加 system prompt) + skill_context(合并工具白名单)
+- Supervisor 顶层对话图（chat 图）: 关键词分类（审核优先>设定>写作）→ 路由三条子图（子图作为节点嵌入）
+- API: /api/skills（list/get/apply）；/api/agents/chat 支持 skills 字段
+- 修复: SkillRegistry.list 遮蔽内置 list→get_all；分类优先级（"检查设定一致性"→review）
+- 测试: test_skills.py 9 项（加载/注入/supervisor 路由/chat 图 e2e）
+- pytest 27 passed

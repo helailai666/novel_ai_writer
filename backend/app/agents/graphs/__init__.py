@@ -93,10 +93,18 @@ def build_review_graph():
     return g.compile()
 
 
+def build_chat_graph():
+    """Supervisor 顶层对话图（自由文本 → 自动路由子图）"""
+    from app.agents.graphs.supervisor import build_supervisor_graph
+
+    return build_supervisor_graph()
+
+
 _BUILDERS = {
     "setting": build_setting_graph,
     "chapter": build_chapter_graph,
     "review": build_review_graph,
+    "chat": build_chat_graph,
 }
 
 

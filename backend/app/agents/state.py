@@ -32,6 +32,7 @@ class NovelState(TypedDict):
     content: Optional[str]                      # 待审核/待润色内容
     context: Optional[str]                      # 补充上下文
     dimensions: Optional[list[str]]             # 审核维度
+    skills: Optional[list[str]]                 # 启用的技能包名（P6）
 
     # ── 运行期状态 ──────────────────────────────────────────────
     settings_snapshot: dict[str, Any]           # 检索到的设定快照
