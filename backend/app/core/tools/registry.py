@@ -102,6 +102,8 @@ class ToolRegistry:
         class _ExternalTool(BaseTool):
             pass
 
+        _ExternalTool.__abstractmethods__ = frozenset()  # 允许实例化（execute 运行时绑定）
+
         tool = _ExternalTool()
         tool.name = name
         tool.description = description
@@ -109,7 +111,10 @@ class ToolRegistry:
 
         async def _execute(**kwargs):
             try:
-                return await executor(**kwargs)
+                out = await executor(**kwargs)
+                if isinstance(out, ToolResult):
+                    return out
+                return ToolResult(ok=True, content=str(out))
             except Exception as e:
                 return ToolResult(ok=False, error=str(e))
 

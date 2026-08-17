@@ -12,8 +12,17 @@ from app.database import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动时初始化数据库，关闭时清理资源"""
+    """启动时初始化数据库、桥接外部 MCP server；关闭时清理资源"""
     await init_db()
+    try:
+        from app.core.mcp import bridge_all
+
+        bridged = await bridge_all()
+        if bridged:
+            total = sum(len(v) for v in bridged.values())
+            print(f"[MCP] 外部 server 桥接完成: {total} 个工具", flush=True)
+    except Exception as e:
+        print(f"[MCP] 桥接跳过: {e}", flush=True)
     yield
 
 
@@ -47,6 +56,7 @@ from app.api.agents import router as agents_router
 from app.api.tools import router as tools_router
 from app.api.knowledge import router as knowledge_router
 from app.api.hot_memes import router as hot_memes_router
+from app.api.mcp import router as mcp_router
 
 app.include_router(projects_router)
 app.include_router(settings_router)
@@ -57,6 +67,7 @@ app.include_router(agents_router)
 app.include_router(tools_router)
 app.include_router(knowledge_router)
 app.include_router(hot_memes_router)
+app.include_router(mcp_router)
 
 
 # ── 健康检查 ─────────────────────────────────────────────────────

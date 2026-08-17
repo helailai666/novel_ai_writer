@@ -37,3 +37,13 @@
 ## 恢复提示
 
 - 恢复点: P5 MCP（服务端重建暴露真实工具 / 客户端桥接外部 server / mcp_servers.yaml 配置 / pyproject 包路径修复）
+
+# P5 完成（2026-08-18 追加）
+
+- MCP 服务端重建: app/core/mcp/server.py（MCPServer + 注册表自动暴露 10 工具，代码生成带类型签名 handler，stdio/SSE 传输），删除旧 backend/mcp（与 SDK 包名冲突）
+- MCP 客户端: app/core/mcp/client.py（stdio/SSE 桥接，工具命名 mcp_<server>_<tool>，每次调用独立建连）
+- 配置: backend/config/mcp_servers.yaml（示例，默认全部 disabled）；启动时 lifespan 自动 bridge_all
+- API: /api/mcp/servers + /api/mcp/reload + /api/mcp/tools
+- 修复: mcp 2.0 移除 fastmcp→MCPServer；Tool.input_schema 属性名；抽象类实例化；代码生成参数顺序/初始化
+- 测试: test_mcp.py 2 项（服务端 stdio 握手真实工具调用 / 客户端桥接 fake server）
+- pytest 18 passed

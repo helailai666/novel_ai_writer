@@ -20,6 +20,12 @@ os.environ["VECTOR_STORE_BACKEND"] = "mock"
 
 
 @pytest.fixture
+def test_db_url() -> str:
+    """测试临时数据库 URL（供子进程/外部进程复用同一 DB）"""
+    return f"sqlite+aiosqlite:///{_TMPDIR}/test.db"
+
+
+@pytest.fixture
 async def db():
     """临时数据库：建表 + 一个测试项目（显式 commit）"""
     from app.database import async_session_factory, init_db
