@@ -58,3 +58,13 @@
 - 修复: SkillRegistry.list 遮蔽内置 list→get_all；分类优先级（"检查设定一致性"→review）
 - 测试: test_skills.py 9 项（加载/注入/supervisor 路由/chat 图 e2e）
 - pytest 27 passed
+
+# P7 完成（2026-08-18 追加）
+
+- 后端新增: /api/model-providers（供应商列表 + 连通性测试）
+- 前端 api/index.js: +6 组 API（knowledge/hot-memes/agents/tools/skills/provider/mcp），修复重复 export default
+- StreamOutput.vue: 类型化 SSE 事件消费（token/node/tool_call/review/checkpoint/done/error + 活动日志条 + 旧格式兼容）
+- 新页面: KnowledgeView（文档列表/文本摄取/文件上传/混合检索抽屉）、HotMemesView（热梗卡片 CRUD+搜索）、GlobalSettingsView（供应商选择+连通测试/搜索模式/MCP 桥接状态/技能包网格）
+- 路由: /projects/:id/knowledge + /projects/:id/memes + /settings；Layout 导航与面包屑更新
+- 验证: npm run build 成功（新 chunk 生成）；parity 测试覆盖新增 API 调用全命中
+- pytest 27 passed

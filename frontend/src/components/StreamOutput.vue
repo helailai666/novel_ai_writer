@@ -81,6 +81,13 @@
       />
     </div>
 
+    <!-- 活动日志（节点/工具/审核事件） -->
+    <div v-if="activityLog.length" class="stream-activity">
+      <div v-for="(item, i) in activityLog" :key="i" class="activity-item">
+        <n-tag :type="item.type" size="tiny" round>{{ item.text }}</n-tag>
+      </div>
+    </div>
+
     <!-- 输出内容区 -->
     <div
       class="stream-content"
@@ -256,6 +263,7 @@ async function start() {
   errorMessage.value = ''
   progressPercent.value = 0
   tokenStats.value = { input: 0, output: 0, total: 0 }
+  resetActivity()
   status.value = 'connecting'
   startTime.value = Date.now()
   startTimer()
@@ -331,10 +339,51 @@ async function start() {
   }
 }
 
-/** 处理单条 SSE 数据 */
+/** 处理单条 SSE 数据（类型化事件协议 + 旧格式兼容） */
 function handleSSEData(data) {
+  // ── 类型化事件（LangGraph SSE 协议） ──────────────────────────
+  if (data.type) {
+    switch (data.type) {
+      case 'token':
+        fullText.value += data.text || ''
+        updateDisplay()
+        break
+      case 'node_start':
+        addActivity('info', `▶ ${nodeLabel(data.node)}`)
+        break
+      case 'node_end':
+        break
+      case 'tool_call':
+        addActivity('primary', `🔧 调用工具 ${data.tool}`)
+        break
+      case 'tool_result':
+        addActivity('success', `✅ ${data.tool} → ${(data.summary || '').slice(0, 60)}`)
+        break
+      case 'review':
+        reviewScores.value.push({ dimension: data.dimension, score: data.score })
+        addActivity('warning', `📊 ${data.dimension} 评分: ${data.score}`)
+        break
+      case 'checkpoint':
+        addActivity(data.status === 'rewrite' ? 'warning' : 'success',
+          data.status === 'rewrite' ? `↻ 第 ${data.round} 轮未达标，重写中…` : `✓ 第 ${data.round} 轮通过`)
+        break
+      case 'done':
+        stopTimer()
+        status.value = 'done'
+        progressPercent.value = 100
+        displayText.value = fullText.value
+        emit('done', { content: fullText.value, result: data.result, run_id: data.run_id })
+        break
+      case 'error':
+        throw new Error(data.message || '生成错误')
+      default:
+        break
+    }
+    return
+  }
+
+  // ── 旧格式兼容（{chunk|done|saved|error}） ─────────────────────
   if (data.done) {
-    // 生成完成信号
     stopTimer()
     status.value = 'done'
     progressPercent.value = 100
@@ -366,9 +415,44 @@ function handleSSEData(data) {
       Math.round((fullText.value.length / data.total_length) * 100)
     )
   } else {
-    // 粗略估计：假设目标 2000 字
     progressPercent.value = Math.min(99, Math.round((wordCount.value / 2000) * 100))
   }
+}
+
+/** 节点名 → 友好标签 */
+function nodeLabel(node) {
+  const map = {
+    retrieve_context: '检索上下文',
+    write_draft: '写作',
+    review_draft: '审核',
+    persist_chapter: '保存章节',
+    assemble_context: '准备设定',
+    generate_world: '生成世界观',
+    generate_character: '生成角色',
+    generate_item: '生成道具',
+    generate_skill: '生成技能',
+    generate_faction: '生成势力',
+    generate_location: '生成地点',
+    generate_outline: '生成大纲',
+    consistency_check: '一致性检查',
+    persist_setting: '保存设定',
+    aggregate_review: '汇总审核',
+    supervisor: '任务路由',
+  }
+  return map[node] || node
+}
+
+/** 活动日志 */
+const activityLog = ref([])
+const reviewScores = ref([])
+function addActivity(type, text) {
+  activityLog.value.push({ type, text, ts: Date.now() })
+  if (activityLog.value.length > 30) activityLog.value.shift()
+}
+
+function resetActivity() {
+  activityLog.value = []
+  reviewScores.value = []
 }
 
 /** 更新打字机展示 */
@@ -434,6 +518,7 @@ function reset() {
   progressPercent.value = 0
   tokenStats.value = { input: 0, output: 0, total: 0 }
   elapsedSeconds.value = 0
+  resetActivity()
 }
 
 /** 复制内容 */
@@ -492,6 +577,15 @@ onUnmounted(() => {
   padding: 12px 16px;
   border-bottom: 1px solid var(--n-border-color, #e0e0e0);
   background: var(--n-color-embedded, #fafafa);
+}
+
+.stream-activity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 6px 16px;
+  border-bottom: 1px dashed var(--n-border-color, #e0e0e0);
+  background: #fafbff;
 }
 
 .stream-content {

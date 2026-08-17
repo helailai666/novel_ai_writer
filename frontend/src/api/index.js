@@ -301,6 +301,110 @@ export const searchAPI = {
   }
 }
 
+// ─── 知识库 API ─────────────────────────────────────────
+export const knowledgeAPI = {
+  listDocs(projectId, params) {
+    return http.get('/knowledge', { params: { project_id: projectId, ...params } })
+  },
+  getDoc(docId) {
+    return http.get(`/knowledge/${docId}`)
+  },
+  createDoc(data, projectId) {
+    return http.post('/knowledge', data, { params: { project_id: projectId } })
+  },
+  ingestText(data, projectId) {
+    return http.post('/knowledge/ingest', null, { params: { ...data, project_id: projectId } })
+  },
+  uploadFile(file, projectId) {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post('/knowledge/upload', form, { params: { project_id: projectId } })
+  },
+  deleteDoc(docId) {
+    return http.delete(`/knowledge/${docId}`)
+  },
+  search(query, projectId, opts) {
+    return http.post('/knowledge/search', { query, ...opts }, { params: { project_id: projectId } })
+  }
+}
+
+// ─── 热梗 API ───────────────────────────────────────────
+export const hotMemeAPI = {
+  list(projectId, params) {
+    return http.get('/hot-memes', { params: { project_id: projectId, ...params } })
+  },
+  create(data, projectId) {
+    return http.post('/hot-memes', data, { params: { project_id: projectId } })
+  },
+  search(q, projectId) {
+    return http.get('/hot-memes/search', { params: { q, project_id: projectId } })
+  },
+  remove(memeId) {
+    return http.delete(`/hot-memes/${memeId}`)
+  }
+}
+
+// ─── Agent API（LangGraph）──────────────────────────────
+export const agentsAPI = {
+  chat(data) {
+    return fetch('/api/agents/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+  },
+  run(data) {
+    return http.post('/agents/run', data)
+  },
+  listRuns(params) {
+    return http.get('/agents/runs', { params })
+  }
+}
+
+// ─── Tools / Skills / 模型供应商 API ────────────────────
+export const toolsAPI = {
+  list() {
+    return http.get('/tools')
+  },
+  call(name, arguments_) {
+    return http.post('/tools/call', { name, arguments: arguments_ })
+  }
+}
+
+export const skillsAPI = {
+  list() {
+    return http.get('/skills')
+  },
+  get(name) {
+    return http.get(`/skills/${name}`)
+  },
+  apply(name) {
+    return http.post(`/skills/${name}/apply`)
+  }
+}
+
+export const providerAPI = {
+  list() {
+    return http.get('/model-providers')
+  },
+  test(data) {
+    return http.post('/model-providers/test', data)
+  }
+}
+
+// ─── MCP API ────────────────────────────────────────────
+export const mcpAPI = {
+  servers() {
+    return http.get('/mcp/servers')
+  },
+  reload() {
+    return http.post('/mcp/reload')
+  },
+  tools() {
+    return http.get('/mcp/tools')
+  }
+}
+
 // 默认导出（快捷调用）
 export default {
   ...projectAPI,
@@ -309,5 +413,12 @@ export default {
   ...settingsAPI,
   ...aiGenerateAPI,
   ...reviewAPI,
-  ...searchAPI
+  ...searchAPI,
+  ...knowledgeAPI,
+  ...hotMemeAPI,
+  ...agentsAPI,
+  ...toolsAPI,
+  ...skillsAPI,
+  ...providerAPI,
+  ...mcpAPI
 }

@@ -62,8 +62,25 @@ const routes = [
         name: 'ProjectDashboard',
         component: () => import('@/views/DashboardView.vue'),
         meta: { title: '项目仪表盘' }
+      },
+      {
+        path: 'knowledge',
+        name: 'ProjectKnowledge',
+        component: () => import('@/views/KnowledgeView.vue'),
+        meta: { title: '知识库' }
+      },
+      {
+        path: 'memes',
+        name: 'ProjectMemes',
+        component: () => import('@/views/HotMemesView.vue'),
+        meta: { title: '热梗库' }
       }
     ]
+  },
+  {
+    path: '/settings',
+    component: () => import('@/views/GlobalSettingsView.vue'),
+    meta: { title: '全局设置' }
   },
   {
     path: '/:pathMatch(.*)*',

@@ -146,6 +146,7 @@ import {
   BusinessOutline,
   ListOutline,
   StatsChartOutline,
+  HappyOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -205,6 +206,8 @@ const breadcrumbs = computed(() => {
       else if (paths[2] === 'factions') items.push({ label: '🏛️ 势力' })
       else if (paths[2] === 'outline') items.push({ label: '📜 大纲' })
       else if (paths[2] === 'dashboard') items.push({ label: '📊 仪表盘' })
+      else if (paths[2] === 'knowledge') items.push({ label: '📚 知识库' })
+      else if (paths[2] === 'memes') items.push({ label: '😂 热梗库' })
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
     }
@@ -274,6 +277,16 @@ const projectMenuOptions = computed(() => {
   key: `/projects/${id}/dashboard`,
   icon: renderIcon(StatsChartOutline),
   },
+  {
+  label: '知识库',
+  key: `/projects/${id}/knowledge`,
+  icon: renderIcon(BookOutline),
+  },
+  {
+  label: '热梗库',
+  key: `/projects/${id}/memes`,
+  icon: renderIcon(HappyOutline),
+  },
   ]
 })
 
@@ -281,9 +294,9 @@ const projectMenuOptions = computed(() => {
 const bottomMenuOptions = [
   { type: 'divider', key: 'div-2' },
   {
-    label: '文档',
-    key: '/docs',
-    icon: renderIcon(BookOutline),
+    label: '全局设置',
+    key: '/settings',
+    icon: renderIcon(SettingsOutline),
   },
 ]
 
@@ -306,10 +319,6 @@ function renderMenuLabel(option) {
 
 // ── 导航处理 ────────────────────────────────────────────────────
 function handleMenu(key) {
-  if (key === '/docs') {
-    // 文档可后续扩展
-    return
-  }
   router.push(key)
 }
 
