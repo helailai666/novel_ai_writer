@@ -1,172 +1,164 @@
 # NovelAI Writer — AI 辅助小说创作平台 🚀
 
-> 基于 LangChain + FastAPI + Vue 3 的全栈 AI 写小说工具
+> 基于 **LangGraph + FastAPI + Vue 3** 的全栈 AI 写小说工具（v2 架构）
 
 ---
 
-## ✨ 核心功能
+## ✨ 核心能力
 
-| 功能 | 说明 |
-|:----|:------|
-| 📝 **完整创作流程** | 类型→世界观→角色→能力→道具→大纲→章节→审核 |
-| 🤖 **6个AI Agent** | Master / Creative / Writer / Review / Search / World |
-| 🌐 **网络搜索** | 输入小说名自动分析设定（Tavily + DuckDuckGo） |
-| 🎨 **打字机效果** | SSE 流式输出，逐字展示生成内容 |
-| 🔍 **8维审核系统** | 设定一致性/伏笔追踪/节奏分析/文笔评估等 |
-| 🔌 **MCP 协议** | 24个工具注册 AstrBot，飞书直接控制创作 |
+| 能力 | 说明 |
+|:----|:-----|
+| 🧠 **LangGraph 多 Agent 编排** | 4 张图：设定生成 / 章节写作（含审核→修订循环）/ 8 维并行审核 / Supervisor 自由对话路由 |
+| 🤖 **多模型供应商** | openai / deepseek / qwen / glm / kimi / ollama / anthropic / gemini / azure / mock，OpenAI 兼容万能适配 |
+| 🛠️ **工具注册表（10 个内置工具）** | 网络搜索 / 设定查询 / 角色·兵器·世界观·伏笔查询 / 知识库检索 / 热梗查询 / 章节读取 / 项目摘要 |
+| 🌐 **网络搜索多后端** | Tavily / DuckDuckGo / Bing / SearXNG / Bocha，auto 模式自动降级 |
+| 📚 **知识库** | 文档切片 + 向量化（Chroma）+ 混合检索（关键词 ∪ 向量）；热梗 / 兵器 / 角色 / 世界观分类 |
+| 🔌 **MCP 双向接入** | 服务端暴露真实创作工具（stdio/SSE）；客户端桥接外部 MCP server 工具进 Agent |
+| 🎯 **Skills 技能包** | 目录化技能（网文标准 / 人物弧光 / 伏笔管理 / 节奏控制 / 文笔润色 / 玄幻专项），注入 system prompt 与工具白名单 |
+| 🎨 **类型化 SSE 流式** | node / token / tool_call / review / checkpoint / done 事件协议，前端活动日志实时展示 |
 | 🐳 **Docker 部署** | docker-compose up 一键启动 |
 
 ---
 
-## 🏗️ 系统架构
+## 🏗️ 系统架构（v2）
 
 ```
-用户 (浏览器:5173 / 飞书:MCP)
+用户 (浏览器:5173 / 飞书·外部客户端:MCP)
     │
-    ├── Frontend (Vue 3 + Naive UI)
-    │       │ axios /api/*
-    │       ▼
-    ├── Backend (FastAPI :8000)
-    │       │
-    │       ├── API 层 ─── settings.py / writing.py / review.py / search.py
-    │       ├── Agent 层 ─ 6个 LangChain Agent
-    │       ├── 数据层 ─── SQLite (12张表)
-    │       └── MCP Server ─ 注册到 AstrBot
+    ├── 前端 (Vue 3 + Naive UI) ── axios /api/* + SSE
     │
-    └── MCP 协议 ──→ 机蛋儿直接控制：创建/设定/写作/审核
+    ├── API 薄层 (FastAPI :8000)  ── 校验 + 调 Service，无业务逻辑
+    │       └── app/api/*: projects/settings/writing/review/search/agents/tools/knowledge/hot-memes/mcp/skills/model-providers
+    │
+    ├── Service 层 ── 项目 / 设定 / 写作 / 审核 / 知识库（事务边界）
+    │
+    ├── 编排层 (LangGraph) ── state / events / runner / 4 图 / 节点
+    │       ├── setting_graph   设定生成（assemble→路由→generate→一致性→persist）
+    │       ├── chapter_graph   写作（retrieve→write 流式→review→rewrite 循环→persist）
+    │       ├── review_graph    8 维并行审核（Send fan-out→聚合）
+    │       └── chat_graph      Supervisor 自由文本→自动路由子图
+    │
+    ├── 能力层 (app/core) ── 可插拔基础能力
+    │       ├── llm/      多供应商工厂（OpenAI 兼容万能适配 + 专用适配 + Mock）
+    │       ├── tools/    工具抽象 + 注册表 + 10 内置工具 + 外部桥接
+    │       ├── search/   搜索后端路由与降级（含缓存）
+    │       ├── knowledge/ 嵌入 + 向量存储(Chroma/Mock) + 切片索引 + 混合检索
+    │       ├── mcp/      服务端(MCPServer) + 客户端桥接
+    │       └── skills/   技能包加载/注册/注入
+    │
+    └── 数据层 ── SQLAlchemy 16 表 + Alembic 迁移 + Chroma 向量库
 ```
 
 ---
 
 ## 🚀 快速启动
 
-### 方式 1：一键启动（推荐）
+### 方式 1：本地开发
 
 ```bash
-# Windows
-双击 start-dev.bat
-
-# macOS / Linux
-chmod +x start-dev.sh && ./start-dev.sh
-```
-
-### 方式 2：手动启动
-
-```bash
-# 终端1：后端
+# 后端（Python 3.12+）
 cd backend
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cp ../.env.example .env            # 填入 API Key（可选，无 Key 自动 Mock）
 uvicorn app.main:app --reload --port 8000
 # → http://localhost:8000/docs
 
-# 终端2：前端
+# 前端
 cd frontend
 npm install
 npm run dev
 # → http://localhost:5173
 ```
 
-### 方式 3：Docker 部署
+### 方式 2：Docker 部署
 
 ```bash
-# 复制配置
 cp .env.example .env
-# 编辑 .env 填入 API Key（可选）
-
-# 一键部署
 docker-compose up -d
 # → http://localhost:5173
 ```
 
----
-
-## 🎯 使用示例
-
-### 通过 Web 界面
-1. 打开 `http://localhost:5173`
-2. 点击「新建项目」→ 输入小说名、选择类型
-3. 在「设定」页面：点击 AI 生成世界观/角色/道具
-4. 在「创作」页面：输入章节号，点击生成
-5. 在「审核」页面：运行各维度审核
-
-### 通过飞书 MCP 对话
-```
-机蛋儿，创建一本玄幻小说《剑破九天》
-机蛋儿，生成这本小说的世界观
-机蛋儿，设计5个角色，主角叫林玄
-机蛋儿，生成大纲，100章分5卷
-机蛋儿，写第1章
-机蛋儿，审核第1章
-```
-
----
-
-## 📁 项目结构
-
-```
-novel_ai_writer/
-├── backend/             # FastAPI 后端
-│   ├── app/
-│   │   ├── api/         # 4组API路由（30+端点）
-│   │   ├── agents/      # 6个LangChain Agent
-│   │   ├── models/      # 12张数据库表
-│   │   └── services/    # 搜索/导出服务
-│   ├── mcp/             # MCP Server（24个工具）
-│   └── requirements.txt
-├── frontend/            # Vue 3 前端
-│   ├── src/
-│   │   ├── views/       # 4个页面
-│   │   ├── components/  # Layout + StreamOutput
-│   │   └── api/         # Axios封装
-│   └── package.json
-├── docs/                # 完整需求/架构文档
-├── docker-compose.yml   # 一键部署
-├── start-dev.bat        # Windows启动
-└── start-dev.sh         # Mac/Linux启动
-```
-
----
-
-## ⚙️ 环境变量
+### MCP Server（可选）
 
 ```bash
-# LLM 配置（至少配一个，不配则用 Mock）
-OPENAI_API_KEY=sk-xxx
-DEEPSEEK_API_KEY=sk-xxx
-LLM_PROVIDER=openai          # openai / deepseek / ollama
-LLM_MODEL=gpt-4o-mini
-
-# 搜索配置（可选，不配则用 DuckDuckGo）
-TAVILY_API_KEY=tvly-xxx
+cd backend && python -m app.core.mcp.server            # stdio
+cd backend && python -m app.core.mcp.server --sse      # SSE :8765
 ```
 
-> 💡 **无需 API Key 也能用！** 所有 AI 功能自动降级到 Mock 模式。
+---
+
+## 🔌 配置（.env）
+
+```bash
+# ── LLM（至少配一个，不配则 Mock）──────────────────────
+LLM_PROVIDER=deepseek        # openai/deepseek/ollama/azure/anthropic/gemini/qwen/glm/kimi/mock
+LLM_MODEL=deepseek-chat
+LLM_API_KEY=
+LLM_API_BASE=https://api.deepseek.com
+# 各供应商独立 Key: OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / DASHSCOPE_API_KEY / ZHIPU_API_KEY / MOONSHOT_API_KEY
+
+# ── 搜索 ──────────────────────────────────────────────
+SEARCH_PROVIDER=auto         # auto/tavily/duckduckgo/bing/searxng/bocha/mock
+TAVILY_API_KEY=
+
+# ── 向量化（可选，默认 Mock 哈希向量）──────────────────
+EMBEDDING_PROVIDER=mock      # openai/local/mock
+VECTOR_STORE_BACKEND=chroma  # chroma/faiss/mock
+
+# ── Agent 编排 ────────────────────────────────────────
+AGENT_MAX_REVISIONS=2        # 章节写作图最大修订轮数
+AGENT_REVIEW_THRESHOLD=75    # 低于该分触发重写
+```
+
+> 💡 **无需任何 API Key 也能用**：LLM / 搜索 / 嵌入 / 向量全部自动降级 Mock。
 
 ---
 
-## 📊 技术栈
+## 📖 使用示例
 
-| 层级 | 技术 | 版本 |
-|:----|:----|:----:|
-| 前端框架 | Vue 3 + Vite | ^3.4 |
-| UI 组件库 | Naive UI | ^2.38 |
-| 后端框架 | FastAPI | ^0.110 |
-| AI 框架 | LangChain | ^0.1 |
-| 数据库 | SQLite → PostgreSQL | - |
-| 搜索 | Tavily / DuckDuckGo | - |
-| 部署 | Docker Compose | - |
-| MCP | Model Context Protocol | - |
+### 通过 Web 界面
+1. 新建项目 → 在「模块设定」AI 生成世界观/角色/道具
+2. 「创作工作台」流式生成章节（活动日志可见工具调用与审核评分）
+3. 「知识库」导入参考文档 / 「热梗库」管理流行语（写作时自动注入）
+4. 「审核视图」8 维并行审核
+5. 「全局设置」切换模型供应商并测试连通、查看技能包与 MCP 状态
+
+### 通过 Agent 对话（/api/agents/chat 或 Supervisor chat 图）
+```json
+POST /api/agents/chat
+{"graph": "chat", "project_id": "…", "task": "帮我生成世界观设定",
+ "skills": ["webnovel-standards", "genre-xuanhuan"]}
+```
+
+### 通过 MCP（外部客户端）
+```
+mcpServers: {
+  "novel-writer": {"command": "python", "args": ["-m", "app.core.mcp.server"], "cwd": "<backend路径>"}
+}
+```
+可用工具（真实执行）：setting_query / knowledge_retrieve / hot_meme_lookup / web_search / weapon_lookup / character_lookup / world_setting_lookup / foreshadow_query / chapter_get / project_summary
 
 ---
 
-## 📈 开发路线图
+## 📁 项目结构（要点）
 
-| 阶段 | 状态 | 内容 |
-|:----|:----:|:----|
-| Phase 1 🏗️ | ✅ 完成 | 项目骨架：FastAPI + Vue3 + DB + MCP |
-| Phase 2 🤖 | ✅ 完成 | AI Agent：Creative/Writer/Review/Search |
-| Phase 3 🔗 | ✅ 完成 | 前后端联调 + Pinia + 无Mock |
-| Phase 4 🐳 | ✅ 完成 | Docker + SSE流式 + 一键启动 |
+```
+backend/
+├── app/
+│   ├── api/            # 11 组薄路由
+│   ├── services/       # 业务服务层
+│   ├── agents/         # LangGraph: state/events/runner/graphs(4图)/nodes
+│   ├── core/           # 能力层: llm/tools/search/knowledge/mcp/skills
+│   ├── models/         # 16 张表
+│   └── config/         # 分层配置
+├── migrations/         # Alembic 迁移
+├── skills/             # 内置技能包（6 个）
+├── config/             # mcp_servers.yaml
+└── tests/              # 27 项测试（parity/图/工具/知识库/MCP/技能）
+frontend/
+└── src/views/          # 10 个页面（含知识库/热梗/全局设置）
+```
 
 ---
 

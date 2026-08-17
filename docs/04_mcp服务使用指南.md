@@ -1,92 +1,63 @@
-# NovelAI Writer MCP 服务 — 使用指南
+# NovelAI Writer MCP 服务 — 使用指南（v2）
 
-> **24个 MCP 工具**已注册到 AstrBot，可通过飞书直接控制小说创作全流程。
+> 重构后 MCP 服务基于 **MCPServer + 工具注册表自动暴露**，全部真实执行（DB / 图 / 搜索），非 Mock。
 
 ---
 
 ## 🚀 MCP 服务启动
 
 ```bash
-# 方式1：通过 AstrBot 自动管理（推荐）
-已配置在 F:\app\astrbot\data\mcp_server.json
+# 方式1：stdio（默认，供 Claude Desktop / AstrBot 等外部客户端）
+cd backend
+python -m app.core.mcp.server
 
-# 方式2：手动启动
-cd D:\project\novel_ai_writer
-python -m backend.mcp
+# 方式2：SSE
+python -m app.core.mcp.server --sse --host 127.0.0.1 --port 8765
 ```
 
-## 📊 全部24个工具
+## 注册到外部客户端
 
-### 📁 项目管理（3个）
-| 工具 | 说明 | 在飞书说 |
-|:----|:----|:---------|
-| `create_project` | 创建项目 | "创建一本玄幻小说《xxx》" |
-| `list_projects` | 列出项目 | "我的小说项目有哪些" |
-| `get_project_progress` | 查询进度 | "《xxx》写到哪了" |
+```json
+{
+  "mcpServers": {
+    "novel-writer": {
+      "command": "python",
+      "args": ["-m", "app.core.mcp.server"],
+      "cwd": "<backend 目录绝对路径>"
+    }
+  }
+}
+```
 
-### 🌍 设定生成（4个）
+## 📊 可用工具（10 个，自动随注册表扩展）
+
 | 工具 | 说明 |
 |:----|:----|
-| `generate_world_setting` | 世界观设定（时代/规则/地理） |
-| `generate_characters` | 角色设定（主角/配角/反派） |
-| `generate_items` | 道具体系（武器/防具/丹药） |
-| `generate_outline` | 大纲生成（分卷+章节） |
+| `project_summary` | 项目概况（类型/简介/各模块数量） |
+| `setting_query` | 按关键词查询设定（世界观/角色/技能/道具/势力/大纲/场景/时间线/伏笔） |
+| `chapter_get` | 读取指定章节标题与正文 |
+| `character_lookup` | 角色设定查询（性格/背景/能力/关系） |
+| `weapon_lookup` | 兵器（道具 weapon 类）查询 |
+| `world_setting_lookup` | 世界观设定查询 |
+| `foreshadow_query` | 伏笔查询（埋设/回收状态） |
+| `knowledge_retrieve` | 知识库混合检索（文档/设定资料） |
+| `hot_meme_lookup` | 热梗查询（含义 + 用法示例） |
+| `web_search` | 网络搜索（多后端自动降级） |
 
-### ✍️ 创作控制（2个）
-| 工具 | 说明 |
-|:----|:----|
-| `generate_chapter` | 写单章（2000字） |
-| `batch_generate_chapters` | 批量生成（连续章节） |
+> 工具名与参数 schema 由注册表自动生成：`/api/tools` 可查看最新清单。
 
-### 🌐 搜索参考（1个）
-| 工具 | 说明 |
-|:----|:----|
-| `search_novel_reference` | 搜小说名→自动分析设定 |
+## 🔌 外部 MCP Server 桥接（客户端模式）
 
-### 📊 统计（1个）
-| 工具 | 说明 |
-|:----|:----|
-| `get_statistics` | 字数/章节/角色统计 |
+本项目也可作为 **MCP 客户端**，把外部 server 的工具桥接进 Agent：
 
-### 🔍 审核系统（8个）
-| 工具 | 说明 | 检查内容 |
-|:----|:----|:---------|
-| `review_chapter` | 单章审核 | 设定+语法+通顺+文笔 |
-| `review_batch_chapters` | 批量审核 | 多章质量评估 |
-| `review_setting_consistency` | 设定一致性 | 角色/道具/世界观 vs 内容 |
-| `review_continuity` | 连贯性 | 剧情衔接/时间线 |
-| `review_grammar` | 语法检查 | 错别字/病句/语感 |
-| `review_foreshadowing` | 伏笔追踪 | 设置与回收情况 |
-| `review_pacing` | 节奏分析 | 爽点/冲突/高潮密度 |
-| `generate_review_report` | 审校报告 | 综合评分卡 |
+1. 复制 `backend/app/config/mcp_servers.example.yaml` → `backend/config/mcp_servers.yaml`
+2. 启用要桥接的 server（`enabled: true`）
+3. 启动后端时自动桥接；或调用 `POST /api/mcp/reload`
 
----
+桥接后的工具以 `mcp_<server名>_<工具名>` 出现在工具注册表，Agent 可调用。
 
-## 🎯 飞书对话示例
+## 测试
 
 ```bash
-🤖 → 机蛋儿，创建一本玄幻小说《剑破九天》
-📋 → ✅ 项目已创建！项目ID: proj_001
-
-🤖 → 机蛋儿，搜索参考《凡人修仙传》的设定
-🌐 → ✅ 分析完成！已自动填充世界观/角色/道具/大纲
-
-🤖 → 机蛋儿，生成大纲 100章分5卷
-📖 → ✅ 5卷100章大纲已生成
-
-🤖 → 机蛋儿，写第1章 2000字
-✍️ → ✅ 第1章「初入仙途」已生成
-
-🤖 → 机蛋儿，审核第1章
-🔍 → ✅ 设定一致/语法通过/文笔评分82
+cd backend && python -m pytest tests/test_mcp.py -v
 ```
-
----
-
-## 📂 文件位置
-
-| 文件 | 路径 |
-|:----|:-----|
-| MCP Server | `D:\project\novel_ai_writer\backend\mcp\server.py` |
-| AstrBot 配置 | `F:\app\astrbot\data\mcp_server.json` |
-| MCP 启动 | `python -m backend.mcp` |

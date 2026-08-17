@@ -68,3 +68,35 @@
 - 路由: /projects/:id/knowledge + /projects/:id/memes + /settings；Layout 导航与面包屑更新
 - 验证: npm run build 成功（新 chunk 生成）；parity 测试覆盖新增 API 调用全命中
 - pytest 27 passed
+
+# P8 完成（2026-08-18 追加）— 验收清单全部通过
+
+## 验收清单（计划 §0 成功标准逐项）
+
+1. ✅ 无 Key 全链路 Mock 可跑：设定生成→写章节→审核→知识检索→工具调用（验收冒烟全过）
+2. ✅ LangGraph 4 图 + SSE 类型化事件（token/node_start/review/checkpoint/done 齐全）
+3. ✅ 供应商 10 个 + /api/model-providers 列表与连通测试（mock 测试 ok）
+4. ✅ 工具注册表 10 内置 + ReAct 工具循环 + tool_call/tool_result 事件
+5. ✅ 知识库：摄取→切片→向量→混合检索命中；热梗/兵器/角色/世界观分类（写作图自动注入）
+6. ✅ MCP 双向：服务端 stdio 握手真实工具（10 个）+ 客户端桥接外部 server（测试通过）
+7. ✅ Skills：6 内置技能包加载/注入（system prompt + 工具白名单），supervisor chat 图
+8. ✅ 前端路径兼容 + parity 测试覆盖新增 API 全命中；npm build 成功
+9. ✅ pytest 27 passed
+
+## P8 交付
+
+- backend/Dockerfile 补 COPY skills/ + config/
+- README.md 重写（v2 架构）、docs/05_重构后架构_v3.md、docs/04 MCP 指南更新
+- .gitignore 加 data/（向量库）
+- 验收冒烟脚本覆盖 11 项断言全过
+
+## 最终漂移检查
+
+- 范围: 全部 8 阶段完成；兼容边界保持（存量 REST 路径未变）
+- 退休: legacy agents/config.py/backend-mcp 已删；旧文档 02 保留为历史
+- Docker 沙箱不可用（docker 未安装）→ Dockerfile 静态核对通过，未实跑镜像
+- 决策: 完成
+
+## 恢复提示
+
+- 无遗留阻塞；后续可扩展: supervisor LLM 分类、项目级技能绑定、faiss/qdrant 后端、Redis 缓存

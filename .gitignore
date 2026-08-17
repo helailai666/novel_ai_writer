@@ -34,3 +34,6 @@ docker-data/
 
 # 日志
 *.log
+
+# 向量库数据
+data/

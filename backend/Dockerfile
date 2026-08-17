@@ -35,6 +35,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # 复制应用代码
 COPY app/ ./app/
+COPY skills/ ./skills/
+COPY config/ ./config/
 
 # 创建非 root 用户
 RUN useradd --create-home --shell /bin/bash appuser \
