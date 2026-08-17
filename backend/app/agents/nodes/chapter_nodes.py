@@ -35,9 +35,10 @@ logger = logging.getLogger(__name__)
 
 
 async def retrieve_context(state: NovelState) -> dict:
-    """检索项目设定 / 前文 / 未回收伏笔 → settings_snapshot"""
+    """检索项目设定 / 前文 / 未回收伏笔 / 知识库 / 热梗 → settings_snapshot + knowledge"""
     evs = [events.node_start("retrieve_context")]
     snapshot: dict = {"project": {}, "settings": [], "previous_tail": "", "foreshadows": []}
+    knowledge: list[dict] = []
     try:
         async with async_session_factory() as db:
             pid = state["project_id"]
@@ -63,10 +64,23 @@ async def retrieve_context(state: NovelState) -> dict:
                 select(Foreshadow).where(Foreshadow.project_id == pid, Foreshadow.status == "planted").limit(20)
             )).scalars().all()
             snapshot["foreshadows"] = [f.description[:200] for f in fs]
+
+        # 知识库混合检索（项目级+全局；P4 起可用向量检索）
+        try:
+            from app.services.knowledge_service import KnowledgeService
+
+            task = state.get("task") or state.get("prompt") or ""
+            if task:
+                kb = await KnowledgeService.search(task, state["project_id"], top_k=4, include_memes=True)
+                snapshot["knowledge"] = kb.get("docs") or []
+                snapshot["memes"] = kb.get("memes") or []
+                knowledge = (kb.get("docs") or []) + (kb.get("memes") or [])
+        except Exception as e:
+            logger.warning(f"知识库检索失败（不影响写作）: {e}")
     except Exception as e:
         logger.warning(f"retrieve_context failed: {e}")
     evs.append(events.node_end("retrieve_context"))
-    return {"settings_snapshot": snapshot, "events": evs}
+    return {"settings_snapshot": snapshot, "knowledge": knowledge, "events": evs}
 
 
 def _context_text(state: NovelState) -> str:
@@ -84,6 +98,14 @@ def _context_text(state: NovelState) -> str:
         parts.append(f"【前文结尾】\n{snap['previous_tail']}")
     if snap.get("foreshadows"):
         parts.append(f"【待回收伏笔】{'; '.join(snap['foreshadows'])}")
+    if snap.get("knowledge"):
+        parts.append("【知识库资料】")
+        for d in snap["knowledge"][:5]:
+            parts.append(f"- {d.get('title','')}({d.get('category','')}): {(d.get('content') or d.get('meaning') or '')[:300]}")
+    if snap.get("memes"):
+        parts.append("【可用热梗】")
+        for m in snap["memes"][:5]:
+            parts.append(f"- {m.get('phrase','')}: {m.get('meaning','')} 例: {m.get('usage_example','')}")
     return "\n".join(parts)
 
 

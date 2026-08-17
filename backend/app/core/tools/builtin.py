@@ -282,3 +282,62 @@ class ForeshadowQueryTool(BaseTool):
 
 
 foreshadow_query_tool = ForeshadowQueryTool()
+
+
+# ── knowledge_retrieve ───────────────────────────────────────────
+
+class KnowledgeRetrieveArgs(BaseModel):
+    query: str = Field(..., description="检索关键词")
+    project_id: str = Field(..., description="项目ID")
+    top_k: int = Field(5, ge=1, le=20, description="返回条数")
+    categories: Optional[list[str]] = Field(None, description="类别过滤: general/hot_meme/weapon/character/worldview/...")
+
+
+class KnowledgeRetrieveTool(BaseTool):
+    name = "knowledge_retrieve"
+    description = "检索知识库（文档/设定资料，项目级+全局），返回相关片段，用于写作时补充背景设定"
+    args_schema = KnowledgeRetrieveArgs
+
+    async def execute(self, query: str, project_id: str, top_k: int = 5, categories: Optional[list[str]] = None) -> ToolResult:
+        from app.services.knowledge_service import KnowledgeService
+
+        result = await KnowledgeService.search(query, project_id, top_k, categories, include_memes=False)
+        docs = result.get("docs") or []
+        if not docs:
+            return ToolResult(ok=True, content="知识库无匹配内容", data=[])
+        text = "\n\n".join(f"【{d['title']}】({d.get('category','')})\n{d['content']}" for d in docs)
+        return ToolResult(ok=True, content=text, data=docs)
+
+
+knowledge_retrieve_tool = KnowledgeRetrieveTool()
+
+
+# ── hot_meme_lookup ──────────────────────────────────────────────
+
+class HotMemeLookupArgs(BaseModel):
+    topic: str = Field("", description="梗主题关键词（如: 吐槽/战斗/恋爱；留空返回热门）")
+    project_id: str = Field(..., description="项目ID")
+
+
+class HotMemeLookupTool(BaseTool):
+    name = "hot_meme_lookup"
+    description = "查询热梗库（网络流行语），返回梗的含义与用法示例，写作时自然地融入对话与场景"
+    args_schema = HotMemeLookupArgs
+
+    async def execute(self, topic: str = "", project_id: str = "") -> ToolResult:
+        from app.services.knowledge_service import KnowledgeService
+
+        if topic:
+            rows = await KnowledgeService.search_memes(None, topic, project_id, limit=10)
+        else:
+            rows = await KnowledgeService.list_memes(None, project_id, limit=10)
+        if not rows:
+            return ToolResult(ok=True, content="热梗库暂无匹配", data=[])
+        text = "\n".join(
+            f"- {m['phrase']}[{m.get('category','')}]: {m['meaning']} 例: {m['usage_example']}"
+            for m in rows
+        )
+        return ToolResult(ok=True, content=text, data=rows)
+
+
+hot_meme_lookup_tool = HotMemeLookupTool()

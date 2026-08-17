@@ -31,22 +31,6 @@ class FakeScoreProvider(MockProvider):
         return await super().acomplete(req)
 
 
-@pytest.fixture
-def mock_llm(monkeypatch):
-    """替换 common.create 为 FakeScoreProvider（通过返回的 dict 控制评分）"""
-    import app.agents.nodes.common as common
-
-    ctrl = {"score": 82}
-
-    def _create(*args, **kwargs):
-        provider = FakeScoreProvider(model="mock")
-        provider.score = ctrl["score"]
-        return provider
-
-    monkeypatch.setattr(common, "create", _create)
-    return ctrl
-
-
 # ── setting 图 ────────────────────────────────────────────────────
 
 async def test_setting_graph_generates_and_persists(db, mock_llm):

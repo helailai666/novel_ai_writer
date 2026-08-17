@@ -45,6 +45,8 @@ from app.api.review import router as review_router
 from app.api.search import router as search_router
 from app.api.agents import router as agents_router
 from app.api.tools import router as tools_router
+from app.api.knowledge import router as knowledge_router
+from app.api.hot_memes import router as hot_memes_router
 
 app.include_router(projects_router)
 app.include_router(settings_router)
@@ -53,6 +55,8 @@ app.include_router(review_router)
 app.include_router(search_router)
 app.include_router(agents_router)
 app.include_router(tools_router)
+app.include_router(knowledge_router)
+app.include_router(hot_memes_router)
 
 
 # ── 健康检查 ─────────────────────────────────────────────────────

@@ -13,9 +13,12 @@ from app.models.foreshadow import Foreshadow
 from app.models.chapter import Chapter
 from app.models.volume import Volume
 from app.models.agent_run import AgentRun
+from app.models.knowledge_doc import KnowledgeDoc
+from app.models.knowledge_chunk import KnowledgeChunk
+from app.models.hot_meme import HotMeme
 
 __all__ = [
     "Project", "WorldSetting", "Character", "Skill", "Item", "Faction",
     "Outline", "Location", "Timeline", "Foreshadow", "Chapter", "Volume",
-    "AgentRun",
+    "AgentRun", "KnowledgeDoc", "KnowledgeChunk", "HotMeme",
 ]
