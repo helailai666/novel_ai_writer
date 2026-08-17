@@ -1,14 +1,13 @@
-"""搜索 Agent — 网络搜索小说参考"""
+"""搜索 Agent — 网络搜索小说参考
 
-import os
-import hashlib
-import json
-import time
+搜索后端统一由 SearchService（services/search_service.py）提供，
+本 Agent 只负责「搜索 + LLM 摘要」的编排。
+"""
+
 from typing import Optional
 
-import httpx
-
 from app.agents.agent_base import BaseAgent, AgentConfig, AgentResult, SEARCH_SYSTEM
+from app.services.search_service import SearchService
 
 
 class SearchAgent(BaseAgent):
@@ -27,12 +26,6 @@ class SearchAgent(BaseAgent):
 
     default_system_prompt: str = SEARCH_SYSTEM
     default_model: str = "gpt-4o-mini"
-
-    def __init__(self, config: AgentConfig = None, **kwargs):
-        super().__init__(config, **kwargs)
-        self._tavily_api_key = os.getenv("TAVILY_API_KEY", "")
-        self._cache: dict[str, tuple[float, list[dict]]] = {}  # {cache_key: (timestamp, results)}
-        self._cache_ttl: int = 3600  # 缓存 1 小时
 
     # ── 搜索 + AI 摘要 ───────────────────────────────────────────
 
@@ -96,120 +89,12 @@ class SearchAgent(BaseAgent):
         max_results: int = 5,
         use_cache: bool = True,
     ) -> list[dict]:
-        """执行原始搜索，返回结果列表
-
-        Args:
-            query: 搜索词
-            max_results: 最大结果数
-            use_cache: 是否使用缓存
+        """执行原始搜索（统一走 SearchService，含缓存与降级）
 
         Returns:
             [{"title": ..., "snippet": ..., "url": ...}, ...]
         """
-        # 检查缓存
-        if use_cache:
-            cache_key = self._cache_key(query, max_results)
-            cached = self._cache.get(cache_key)
-            if cached:
-                ts, results = cached
-                if time.time() - ts < self._cache_ttl:
-                    return results
-
-        # Tavily Search API
-        if self._tavily_api_key:
-            results = await self._search_tavily(query, max_results)
-        else:
-            # Fallback: 使用 DuckDuckGo 免费 API
-            results = await self._search_duckduckgo(query, max_results)
-
-        # 缓存
-        if use_cache and results:
-            cache_key = self._cache_key(query, max_results)
-            self._cache[cache_key] = (time.time(), results)
-
-        return results
-
-    # ── Tavily API ─────────────────────────────────────────────────
-
-    async def _search_tavily(self, query: str, max_results: int) -> list[dict]:
-        """调用 Tavily Search API"""
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(
-                    "https://api.tavily.com/search",
-                    json={
-                        "api_key": self._tavily_api_key,
-                        "query": query,
-                        "max_results": max_results,
-                        "search_depth": "basic",
-                    },
-                )
-                if resp.status_code != 200:
-                    return []
-
-                data = resp.json()
-                return [
-                    {
-                        "title": r.get("title", ""),
-                        "snippet": r.get("content", "")[:500],
-                        "url": r.get("url", ""),
-                    }
-                    for r in data.get("results", [])[:max_results]
-                ]
-        except Exception:
-            return []
-
-    # ── DuckDuckGo Fallback ───────────────────────────────────────
-
-    async def _search_duckduckgo(self, query: str, max_results: int) -> list[dict]:
-        """DuckDuckGo Instant Answer API（免费，无需 Key）"""
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
-                    "https://api.duckduckgo.com/",
-                    params={
-                        "q": query,
-                        "format": "json",
-                        "no_html": 1,
-                        "skip_disambig": 1,
-                    },
-                )
-                if resp.status_code != 200:
-                    return []
-
-                data = resp.json()
-                results = []
-
-                # Abstract
-                if data.get("AbstractText"):
-                    results.append({
-                        "title": data.get("Heading", query),
-                        "snippet": data["AbstractText"][:500],
-                        "url": data.get("AbstractURL", ""),
-                    })
-
-                # Related Topics
-                for topic in data.get("RelatedTopics", [])[:max_results - len(results)]:
-                    if isinstance(topic, dict) and "Text" in topic:
-                        results.append({
-                            "title": topic.get("FirstURL", "").split("/")[-1].replace("_", " "),
-                            "snippet": topic["Text"][:500],
-                            "url": topic.get("FirstURL", ""),
-                        })
-
-                return results[:max_results]
-        except Exception:
-            return []
-
-    # ── 缓存 ──────────────────────────────────────────────────────
-
-    def _cache_key(self, query: str, max_results: int) -> str:
-        raw = f"{query}:{max_results}"
-        return hashlib.md5(raw.encode()).hexdigest()
-
-    def clear_cache(self):
-        """清除搜索缓存"""
-        self._cache.clear()
+        return await SearchService.search_web(query, max_results, use_cache)
 
     # ── 抽象接口 ──────────────────────────────────────────────────
 

@@ -1,16 +1,16 @@
-"""项目管理 API — CRUD"""
+"""项目管理 API — CRUD + 导出（薄层，逻辑在 ProjectService）"""
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
 from pydantic import BaseModel, Field
 
 from fastapi.responses import PlainTextResponse
 
 from app.database import get_db
-from app.models.project import Project
-from app.models.chapter import Chapter
+from app.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -47,11 +47,7 @@ class ProjectResponse(BaseModel):
 @router.post("/", response_model=ProjectResponse, status_code=201)
 async def create_project(payload: ProjectCreate, db: AsyncSession = Depends(get_db)):
     """创建新项目"""
-    project = Project(**payload.model_dump())
-    db.add(project)
-    await db.flush()
-    await db.refresh(project)
-    return _to_response(project)
+    return await ProjectService.create(db, payload.model_dump())
 
 
 @router.get("/", response_model=List[ProjectResponse])
@@ -62,94 +58,42 @@ async def list_projects(
     db: AsyncSession = Depends(get_db),
 ):
     """获取项目列表"""
-    stmt = select(Project).order_by(desc(Project.updated_at))
-    if status:
-        stmt = stmt.where(Project.status == status)
-    stmt = stmt.limit(limit).offset(offset)
-    result = await db.execute(stmt)
-    projects = result.scalars().all()
-    return [_to_response(p) for p in projects]
+    return await ProjectService.list(db, status, limit, offset)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
     """获取单个项目"""
-    project = await _get_or_404(project_id, db)
-    return _to_response(project)
+    return await ProjectService.get(db, project_id)
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 async def update_project(project_id: str, payload: ProjectUpdate, db: AsyncSession = Depends(get_db)):
     """更新项目"""
-    project = await _get_or_404(project_id, db)
-    for key, val in payload.model_dump(exclude_unset=True).items():
-        setattr(project, key, val)
-    await db.flush()
-    await db.refresh(project)
-    return _to_response(project)
+    return await ProjectService.update(db, project_id, payload.model_dump(exclude_unset=True))
 
 
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
     """删除项目（级联删除所有关联数据）"""
-    project = await _get_or_404(project_id, db)
-    await db.delete(project)
-    await db.flush()
+    await ProjectService.delete(db, project_id)
 
 
 @router.get("/{project_id}/export")
-async def export_project(project_id: str, format: str = Query("md", pattern="^(md|txt)$"), db: AsyncSession = Depends(get_db)):
+async def export_project(
+    project_id: str,
+    format: str = Query("md", pattern="^(md|txt)$"),
+    db: AsyncSession = Depends(get_db),
+):
     """导出小说为 Markdown 或纯文本"""
-    project = await _get_or_404(project_id, db)
-
-    # 获取所有章节
-    stmt = select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.chapter_number)
-    result = await db.execute(stmt)
-    chapters = result.scalars().all()
-
-    lines = []
-    lines.append(f"# {project.title}")
-    lines.append(f"")
-    lines.append(f"> 类型: {project.genre}  |  简介: {project.synopsis or '无'}")
-    lines.append(f"")
-    lines.append(f"---")
-    lines.append(f"")
-
-    for ch in chapters:
-        lines.append(f"## 第{ch.chapter_number}章 {ch.title or ''}")
-        lines.append(f"")
-        lines.append(ch.content or "(内容待生成)")
-        lines.append(f"")
-        lines.append(f"---")
-        lines.append(f"")
-
-    content = "\n".join(lines)
-    filename = f"{project.title}.{format}"
-
+    content, filename = await ProjectService.export(db, project_id, format)
+    # RFC 5987: 中文文件名走 filename*，ASCII 回退防旧客户端
+    ascii_name = filename.encode("ascii", "ignore").decode() or f"novel.{format}"
+    disposition = (
+        f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
+    )
     return PlainTextResponse(
         content=content,
         media_type="text/plain",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
     )
-
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-async def _get_or_404(project_id: str, db: AsyncSession) -> Project:
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
-
-
-def _to_response(p: Project) -> dict:
-    return {
-        "id": p.id,
-        "title": p.title,
-        "genre": p.genre,
-        "synopsis": p.synopsis,
-        "status": p.status,
-        "created_at": p.created_at.isoformat() if p.created_at else "",
-        "updated_at": p.updated_at.isoformat() if p.updated_at else "",
-    }

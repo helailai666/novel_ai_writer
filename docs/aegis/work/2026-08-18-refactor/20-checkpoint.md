@@ -1,30 +1,31 @@
-# TodoCheckpointDraft — 2026-08-18 首检
+# TodoCheckpointDraft — P1 完成（2026-08-18）
 
 ## 当前 todo / 活动切片
 
-- 当前切片: P0 环境与依赖（venv 重建、依赖安装、配置分层、logging）
-- 已完成 todos: 无（P0 in_progress）
-- 下一步: 等 pip 安装完成 → 验证 app 启动 /health 200
+- 当前切片: P1 目录分层 + Service 抽取（已完成，待提交）
+- 已完成 todos: P0 ✅（9e6fee5）、P1 ✅
+- 下一步: 提交 P1 → P2 LangGraph 核心
 
-## 证据引用（EvidenceRefs）
+## P1 交付内容
 
-- TaskStartSnapshot: HEAD e9af586d57b571dcbba1f967a8065c912734f96e，branch main，工作区干净，upstream 0/0
-- venv 重建: .venv = Python 3.13.13（`python3 -m venv .venv` 成功）
-- requirements.txt 已升级（langgraph>=1.0, mcp>=1.0, chromadb>=0.6, alembic, langchain-*>=1.0）
-- app/config.py → app/config/ 包（settings.py 扩展分组配置 + logging.py + mcp_servers.example.yaml），旧文件已删
-- .env.example 已扩展全量配置
+- Service 层: project_service / setting_service（9 模块通用 CRUD + AI 生成）/ writing_service / review_service / agent_factory（统一 Agent 构造）
+- API 薄层化: projects(155→~110 行) settings(662→~400 行) writing(441→~210 行) review(166→~80 行)；行为零变化
+- 搜索统一: SearchAgent.search_raw → SearchService.search_web（删除两份重复 Tavily/DDG 实现与独立缓存）
+- 修复: `/web/ai-summary` 双重搜索（缓存统一后自然消除）、`/web/cache/clear` 失效调用、**导出中文文件名 latin-1 500 崩溃（RFC 5987 filename*）**
+- 新增: app/core/ 层骨架、app/deps.py、pytest.ini、tests/test_api_parity.py（路由↔前端对照测试，含 `${dimension}` 闭集展开）
 
-## 阻塞项
+## 证据
 
-- 后台 job bash-1: pip install -r backend/requirements.txt（运行中）
-- Hindsight 服务 401 未认证（环境问题，改用 docs/aegis 记录）
+- `pytest tests/` → 2 passed（parity 全绿）
+- mock 模式全链路冒烟: project/world/character CRUD、AI generate-world、volume/chapter、generate/continue/polish、review consistency+comprehensive、search web、export（中文名 200）、SSE stream（chunk/done/saved 事件齐全）、batch-generate(2)
+- 22 处历史失配核对: 当前代码大多已修复（FK/CORS/body 传参等），对照测试建立防回归屏障
 
 ## 漂移检查（DriftCheckDraft）
 
-- 范围: 未越界（仅 P0 配置/环境，未动业务代码）
-- 兼容: config 包保持 `from app.config import settings` 兼容
+- 范围: 未越界；兼容边界保持（端点路径/响应形状未变）
+- 退休: search_agent 内部重复实现已删；app/agents/* 遗留至 P2 迁移
 - 决策: continue
 
 ## 恢复提示（ResumeStateHint）
 
-- 恢复点: P0 剩余 = 等依赖装完 → 启动验证 → 提交 P0
+- 恢复点: 提交 P1 后进入 P2（LangGraph state/events/runner + 三条图 + nodes 迁移旧 Agent 逻辑 + /api/agents/chat SSE + agent_runs 表）

@@ -134,6 +134,4 @@ async def search_web_with_ai(payload: WebSearchRequest):
 async def clear_search_cache():
     """清除搜索缓存"""
     SearchService.clear_cache()
-    agent = _get_search_agent()
-    agent.clear_cache()
     return {"message": "搜索缓存已清除"}
