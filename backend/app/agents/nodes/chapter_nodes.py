@@ -21,6 +21,7 @@ from app.agents.nodes.common import (
     enhance_system,
     is_mock_provider,
     messages,
+    with_history,
     resolve_llm,
     skill_context,
 )
@@ -167,6 +168,7 @@ async def write_draft(state: NovelState) -> dict:
     task = _build_writing_task(state)
     context_text = _context_text(state)
     user_msg = f"【上下文】\n{context_text or '无'}\n\n【任务】\n{task}" if context_text else task
+    user_msg = with_history(state, user_msg)  # L 轮多轮上下文
     try:
         mode = state.get("mode") or "generate"
         if mode in ("generate", "rewrite"):

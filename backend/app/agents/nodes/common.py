@@ -48,6 +48,23 @@ def messages(system: str, user: str) -> list[LLMMessage]:
     return [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)]
 
 
+def with_history(state: NovelState, user_msg: str, max_turns: int = 6) -> str:
+    """把对话历史前缀到用户消息（L 轮多轮上下文；缺省/空历史原样返回）
+
+    历史格式: [{"role": "user"/"assistant", "content": "..."}]
+    """
+    history = state.get("history") or []
+    if not history:
+        return user_msg
+    lines = ["【对话历史（此前轮次）】"]
+    for turn in history[-max_turns:]:
+        role = "用户" if turn.get("role") == "user" else "助手"
+        content = str(turn.get("content") or "").strip()
+        if content:
+            lines.append(f"- {role}: {content[:500]}")
+    return "\n".join(lines) + "\n\n" + user_msg
+
+
 def skill_context(state: NovelState) -> dict:
     """按 state.skills 组装技能注入内容：{prompt, tools, knowledge_refs}"""
     names = state.get("skills") or []

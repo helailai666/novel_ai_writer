@@ -22,6 +22,7 @@ from app.agents.nodes.common import (
     is_mock_provider,
     messages,
     resolve_llm,
+    with_history,
 )
 
 # 设定图工具白名单（P3 补全）：查证参考 / 知识库 / 已有设定
@@ -86,6 +87,7 @@ async def _generate(state: NovelState, task: str, node_name: str = "generate") -
 
     llm = resolve_llm(state)
     evs = [events.node_start(node_name)]
+    task = with_history(state, task)  # L 轮多轮上下文（工具循环与直答统一注入）
     try:
         system = enhance_system(state, CREATIVE_SYSTEM)
         from app.agents.nodes.tool_loop import resolve_tools, run_tool_loop

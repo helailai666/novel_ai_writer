@@ -163,6 +163,43 @@ def test_tools_skills_providers_api(client):
     assert r.json()["ok"] is True and r.json()["is_mock"] is True
 
 
+def test_chat_history_endpoint_reconstructs_turns(client, project):
+    """L 轮：GET /api/agents/chat/history 由 chat 运行重建 turns"""
+    client.post("/api/agents/run", json={"graph": "chat", "project_id": project, "task": "写第一章"})
+    client.post("/api/agents/run", json={"graph": "chat", "project_id": project, "task": "介绍一下这个世界的角色有哪些"})
+    r = client.get(f"/api/agents/chat/history?project_id={project}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["project_id"] == project
+    turns = body["turns"]
+    assert len(turns) == 4, f"2 次运行应重建 4 条 turns: {len(turns)}"
+    contents = [t["content"] for t in turns]
+    assert "写第一章" in contents and "介绍一下这个世界的角色有哪些" in contents
+    intents = {t["intent"] for t in turns if t["role"] == "assistant"}
+    assert "chapter" in intents and "qa" in intents, f"意图应含 chapter/qa: {intents}"
+    for t in turns:
+        if t["role"] == "user":
+            assert t.get("intent") is None
+        else:
+            assert "sources" in t and "is_mock" in t
+
+
+def test_export_json_full_backup(client, project):
+    """L 轮：GET /api/projects/{id}/export?format=json 全量备份"""
+    client.post(f"/api/projects/{project}/settings/characters", json={"name": "林玄", "role": "protagonist"})
+    client.post(f"/api/projects/{project}/writing/chapters",
+                json={"title": "第一章", "content": "正文内容……", "chapter_number": 1})
+    r = client.get(f"/api/projects/{project}/export", params={"format": "json"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/json")
+    data = json.loads(r.text)
+    assert data["project"]["id"] == project
+    assert any(ch["title"] == "第一章" for ch in data["chapters"]), data["chapters"]
+    assert any(ch["name"] == "林玄" for ch in data["characters"]), data["characters"]
+    assert set(data) >= {"volumes", "chapters", "characters", "items", "skills", "factions",
+                         "locations", "outlines", "world_settings", "foreshadows", "knowledge_docs", "hot_memes"}
+
+
 def test_runtime_config_endpoint(client):
     """J3: /api/runtime/config 返回脱敏有效配置"""
     r = client.get("/api/runtime/config")

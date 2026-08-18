@@ -33,6 +33,7 @@ class NovelState(TypedDict):
     context: Optional[str]                      # 补充上下文
     dimensions: Optional[list[str]]             # 审核维度
     skills: Optional[list[str]]                 # 启用的技能包名（P6）
+    history: Optional[list[dict]]               # 对话历史 [{"role","content"}]（L 轮多轮上下文）
 
     # ── 运行期状态 ──────────────────────────────────────────────
     settings_snapshot: dict[str, Any]           # 检索到的设定快照

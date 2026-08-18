@@ -322,6 +322,23 @@ async def test_supervisor_keyword_when_llm_disabled(monkeypatch, db):
     assert route["intent"] == "chapter" and route["method"] == "keyword"
 
 
+# ── L 轮 多轮对话上下文 ─────────────────────────────────────────
+
+async def test_chapter_history_injection(recording_llm, db):
+    """L 轮：写作图把对话历史注入用户消息（continue 纯流式路径）"""
+    from app.agents.nodes.chapter_nodes import write_draft
+
+    result = await write_draft({
+        "project_id": db, "task": "接着往下写", "mode": "continue",
+        "content": "前文：主角踏入宗门。",
+        "history": [{"role": "user", "content": "帮我写第一章"}],
+    })
+    assert result.get("draft"), "应产出草稿"
+    assert "【对话历史" in recording_llm.last_user, recording_llm.last_user[:200]
+    assert "帮我写第一章" in recording_llm.last_user
+    assert "前文：主角踏入宗门" in recording_llm.last_user
+
+
 # ── K 轮 supervisor qa 意图 ───────────────────────────────────────
 
 def test_supervisor_qa_keyword_fallback():

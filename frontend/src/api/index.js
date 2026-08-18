@@ -352,11 +352,12 @@ export const hotMemeAPI = {
 
 // ─── Agent API（LangGraph）──────────────────────────────
 export const agentsAPI = {
-  chat(data) {
+  chat(data, signal) {
     return fetch('/api/agents/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal
     })
   },
   run(data) {
@@ -373,6 +374,9 @@ export const agentsAPI = {
   },
   clearRuns(params) {
     return http.delete('/agents/runs', { params })
+  },
+  chatHistory(params) {
+    return http.get('/agents/chat/history', { params })
   }
 }
 

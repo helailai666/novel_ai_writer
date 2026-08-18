@@ -84,10 +84,10 @@ async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{project_id}/export")
 async def export_project(
     project_id: str,
-    format: str = Query("md", pattern="^(md|txt)$"),
+    format: str = Query("md", pattern="^(md|txt|json)$"),
     db: AsyncSession = Depends(get_db),
 ):
-    """导出小说为 Markdown 或纯文本"""
+    """导出小说：md/txt 章节串联；json 全量备份（L 轮）"""
     content, filename = await ProjectService.export(db, project_id, format)
     # RFC 5987: 中文文件名走 filename*，ASCII 回退防旧客户端
     ascii_name = filename.encode("ascii", "ignore").decode() or f"novel.{format}"
@@ -96,6 +96,6 @@ async def export_project(
     )
     return PlainTextResponse(
         content=content,
-        media_type="text/plain",
+        media_type="application/json" if format == "json" else "text/plain",
         headers={"Content-Disposition": disposition},
     )

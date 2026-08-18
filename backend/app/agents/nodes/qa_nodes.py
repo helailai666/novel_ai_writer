@@ -8,7 +8,7 @@ answer_qa: LLM 流式作答（token 事件），附来源引用，资料不足�
 import logging
 
 from app.agents import events
-from app.agents.nodes.common import enhance_system, is_mock_provider, messages, resolve_llm
+from app.agents.nodes.common import enhance_system, is_mock_provider, messages, resolve_llm, with_history
 from app.agents.state import NovelState
 from app.core.llm import LLMRequest
 
@@ -81,6 +81,7 @@ async def answer_qa(state: NovelState) -> dict:
     else:
         context_text = "（知识库与网络均未检索到相关资料）"
     user_msg = f"{context_text}\n\n【用户问题】\n{task}"
+    user_msg = with_history(state, user_msg)  # L 轮多轮上下文
     try:
         system = enhance_system(state, QA_SYSTEM)
         full = ""

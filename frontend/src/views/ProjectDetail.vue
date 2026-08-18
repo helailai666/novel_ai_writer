@@ -162,6 +162,16 @@ const moreActions = [
     type: 'divider',
   },
   {
+    label: '导出',
+    key: 'export',
+    icon: () => h('span', '⬇️'),
+    children: [
+      { label: 'Markdown (.md)', key: 'export-md' },
+      { label: '纯文本 (.txt)', key: 'export-txt' },
+      { label: '全量备份 (.json)', key: 'export-json' },
+    ],
+  },
+  {
     label: `打字速度: ${streamSpeed.value}ms`,
     key: 'speed',
     children: [
@@ -176,9 +186,26 @@ const moreActions = [
 function handleMoreAction(key) {
   if (key === 'continue') continueWrite()
   else if (key === 'polish') polish()
+  else if (key?.startsWith('export-')) downloadExport(key.replace('export-', ''))
   else if (key?.startsWith('speed-')) {
     streamSpeed.value = parseInt(key.replace('speed-', ''))
     moreActions.find(a => a.key === 'speed').label = `打字速度: ${streamSpeed.value}ms`
+  }
+}
+
+async function downloadExport(format) {
+  try {
+    const blob = await projectAPI.exportProject(pid(), format)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `novel.${format}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    message.error(e.message || '导出失败')
   }
 }
 

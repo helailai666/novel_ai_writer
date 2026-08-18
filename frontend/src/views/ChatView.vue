@@ -12,6 +12,9 @@
 
     <n-card class="chat-card" :bordered="false">
       <div ref="scrollRef" class="msg-list">
+        <n-spin :show="loadingHistory">
+          <div style="min-height: 200px"></div>
+        </n-spin>
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
           <div class="avatar">{{ m.role === 'user' ? '🧑' : '🤖' }}</div>
           <div class="bubble">
@@ -38,6 +41,9 @@
               </n-collapse>
             </div>
             <div v-if="m.error" class="error">❌ {{ m.error }}</div>
+            <div v-if="m.role === 'assistant' && m.error" class="retry-row">
+              <n-button size="tiny" @click="retry">🔄 重试上一轮</n-button>
+            </div>
           </div>
         </div>
         <n-empty v-if="!messages.length" description="输入问题开始对话，如：这个世界的修仙境界怎么划分？" style="margin-top:60px" />
@@ -52,7 +58,11 @@
           placeholder="问设定、写章节、审内容、查知识…（Enter 发送，Shift+Enter 换行）"
           @keydown="onKey"
         />
-        <n-button type="primary" :loading="running" @click="send" class="send-btn">
+        <n-button v-if="running" type="error" @click="stop" class="send-btn">
+          <template #icon><n-icon><CloseOutline /></n-icon></template>
+          停止
+        </n-button>
+        <n-button v-else type="primary" @click="send" class="send-btn">
           <template #icon><n-icon><SendOutline /></n-icon></template>
           发送
         </n-button>
@@ -63,13 +73,14 @@
 
 <script setup>
 /**
- * ChatView.vue — AI 对话面板（K 轮）
- * 消费 /api/agents/chat SSE：路由徽标 + 流式打字机 + 工具 chips + 来源折叠 + localStorage 持久化
+ * ChatView.vue — AI 对话面板（K 轮创建，L 轮增强）
+ * 消费 /api/agents/chat SSE：路由徽标 + 流式打字机 + 工具 chips + 来源折叠
+ * L 轮：多轮上下文（history 注入）、历史服务端重建加载、停止/重试、localStorage 迁移兜底
  */
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { useMessage, NIcon } from 'naive-ui'
-import { SendOutline } from '@vicons/ionicons5'
+import { useMessage } from 'naive-ui'
+import { SendOutline, CloseOutline } from '@vicons/ionicons5'
 import { agentsAPI } from '../api/index.js'
 
 const route = useRoute()
@@ -81,7 +92,9 @@ const storageKey = computed(() => `dsh.chat.${projectId.value}`)
 const messages = ref([])
 const draft = ref('')
 const running = ref(false)
+const loadingHistory = ref(false)
 const scrollRef = ref(null)
+let controller = null
 
 const ROUTE_META = {
   setting: { label: '设定', type: 'info' },
@@ -100,31 +113,77 @@ function renderText(content) {
     .replace(/\n/g, '<br/>')
 }
 
-// ── 持久化 ───────────────────────────────────────────────────────
+// ── 持久化（localStorage 仅作迁移兜底；权威数据在服务端 agent_runs）──
 function save() {
-  try {
-    localStorage.setItem(storageKey.value, JSON.stringify(messages.value))
-  } catch (e) { /* 忽略配额错误 */ }
+  try { localStorage.setItem(storageKey.value, JSON.stringify(messages.value)) } catch (e) { /* 忽略 */ }
 }
 
-function clearChat() {
+async function clearChat() {
+  const last = messages.value.slice()
   messages.value = []
   try { localStorage.removeItem(storageKey.value) } catch (e) { /* 忽略 */ }
+  try {
+    const r = await agentsAPI.clearRuns({ project_id: projectId.value, graph: 'chat' })
+    if (r.deleted !== undefined) message.success(`已清空对话（删除 ${r.deleted} 条运行记录）`)
+  } catch (e) {
+    messages.value = last // 服务端清理失败则回滚本地
+    message.error(e.message || '清空失败')
+  }
 }
 
-onMounted(() => {
+async function loadHistory() {
+  loadingHistory.value = true
   try {
-    const raw = localStorage.getItem(storageKey.value)
-    if (raw) messages.value = JSON.parse(raw) || []
-  } catch (e) { /* 忽略 */ }
-})
+    const r = await agentsAPI.chatHistory({ project_id: projectId.value })
+    const turns = r.turns || []
+    if (turns.length) {
+      messages.value = turns.map((t) => ({
+        role: t.role,
+        content: t.content || '',
+        route: t.role === 'assistant' && t.intent ? { intent: t.intent, method: t.method } : null,
+        tools: [],
+        sources: t.sources || [],
+        error: '',
+        saved: !!t.saved,
+        retrieve: undefined,
+        isMock: !!t.is_mock,
+      }))
+      try { localStorage.removeItem(storageKey.value) } catch (e) { /* 忽略 */ }
+    } else {
+      // 服务端无历史 → 迁移本地旧数据（仅当本地存在）
+      const raw = localStorage.getItem(storageKey.value)
+      if (raw) {
+        const local = JSON.parse(raw) || []
+        if (local.length) messages.value = local
+      }
+    }
+  } catch (e) {
+    // 历史加载失败 → 退化为本地存储
+    try {
+      const raw = localStorage.getItem(storageKey.value)
+      if (raw) messages.value = JSON.parse(raw) || []
+    } catch (e2) { /* 忽略 */ }
+  } finally {
+    loadingHistory.value = false
+    scrollToBottom()
+  }
+}
 
 // ── 发送 / SSE 消费 ──────────────────────────────────────────────
-async function send() {
-  const task = draft.value.trim()
+function buildHistoryPayload() {
+  // 最近 6 轮（排除当前待发送轮）→ [{role, content}]
+  return messages.value
+    .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.content))
+    .slice(-6)
+    .map((m) => ({ role: m.role, content: (m.content || '').slice(0, 1000) }))
+}
+
+async function send(taskText) {
+  const task = (taskText ?? draft.value).trim()
   if (!task || running.value) return
   draft.value = ''
   running.value = true
+  controller = new AbortController()
   messages.value.push({ role: 'user', content: task, tools: [], sources: [], error: '' })
   const m = { role: 'assistant', content: '', route: null, tools: [], sources: [], error: '', saved: false, retrieve: undefined }
   messages.value.push(m)
@@ -132,7 +191,12 @@ async function send() {
   save()
 
   try {
-    const res = await agentsAPI.chat({ graph: 'chat', project_id: projectId.value, task })
+    const res = await agentsAPI.chat({
+      graph: 'chat',
+      project_id: projectId.value,
+      task,
+      history: buildHistoryPayload(),
+    }, controller.signal)
     if (!res.ok || !res.body) throw new Error(`请求失败（${res.status}）`)
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
@@ -160,8 +224,10 @@ async function send() {
       }
     }
   } catch (e) {
-    m.error = e.message || '对话请求失败'
+    if (e.name === 'AbortError') m.error = '已停止生成'
+    else m.error = e.message || '对话请求失败'
   } finally {
+    controller = null
     running.value = false
     save()
     scrollToBottom()
@@ -199,6 +265,16 @@ function handleEvent(m, ev) {
   scrollToBottom()
 }
 
+function stop() {
+  if (controller) controller.abort()
+}
+
+function retry() {
+  // 重发最后一条用户消息
+  const lastUser = [...messages.value].reverse().find((m) => m.role === 'user')
+  if (lastUser) send(lastUser.content)
+}
+
 function onKey(e) {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault()
@@ -210,6 +286,8 @@ async function scrollToBottom() {
   await nextTick()
   if (scrollRef.value) scrollRef.value.scrollTop = scrollRef.value.scrollHeight
 }
+
+onMounted(loadHistory)
 </script>
 
 <style scoped>
@@ -232,6 +310,7 @@ async function scrollToBottom() {
 .source-item { display: flex; align-items: flex-start; gap: 6px; padding: 3px 0; }
 .source-item span { color: #6b7280; flex: 1; }
 .error { margin-top: 6px; color: #ef4444; font-size: 13px; }
+.retry-row { margin-top: 8px; }
 .input-row { display: flex; gap: 10px; margin-top: 12px; align-items: flex-end; }
 .send-btn { height: 64px; }
 </style>

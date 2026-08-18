@@ -77,3 +77,41 @@ def mock_llm(monkeypatch):
 
     monkeypatch.setattr(common, "create", _create)
     return ctrl
+
+
+class _UserRecordingProvider:
+    """记录最后一次 user 消息的 Mock LLM（L 轮 history 注入断言）"""
+
+    last_user = ""
+    provider_name = "mock"
+
+    def __init__(self, model="mock", api_key=None, api_base=None, **kwargs):
+        from app.core.llm.providers.mock import MockProvider
+
+        self._inner = MockProvider(model, api_key, api_base, **kwargs)
+
+    def _record(self, req):
+        self.last_user = next((m.content for m in req.messages if m.role == "user"), "")
+
+    async def acomplete(self, req):
+        self._record(req)
+        return await self._inner.acomplete(req)
+
+    async def astream(self, req):
+        self._record(req)
+        async for chunk in self._inner.astream(req):
+            yield chunk
+
+
+@pytest.fixture
+def recording_llm(monkeypatch):
+    """替换 agents/nodes/common.create 为记录 user 消息的 Mock LLM"""
+    import app.agents.nodes.common as common
+
+    llm = _UserRecordingProvider(model="mock")
+
+    def _create(*args, **kwargs):
+        return llm
+
+    monkeypatch.setattr(common, "create", _create)
+    return llm

@@ -43,6 +43,7 @@ class AgentChatRequest(BaseModel):
     dimensions: Optional[list[str]] = Field(None, description="审核维度列表")
     skills: Optional[list[str]] = Field(None, description="启用的技能包名列表")
     model: Optional[str] = Field(None, description="供应商/模型覆盖，如 deepseek:deepseek-chat")
+    history: Optional[list[dict]] = Field(None, description="对话历史 [{\"role\":\"user|assistant\",\"content\":...}]（L 轮多轮上下文）")
 
     def to_state(self) -> NovelState:
         return {
@@ -75,6 +76,7 @@ class AgentChatRequest(BaseModel):
             "final_output": {},
             "events": [],
             "run_id": None,
+            "history": self.history,
         }
 
 
@@ -171,6 +173,57 @@ async def list_runs(
         )
         for r in runs
     ]
+
+
+@router.get("/chat/history")
+async def chat_history(
+    project_id: str = Query(...),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """重建对话历史（L 轮）：由 agent_runs(graph=chat) 还原 turns
+
+    每条 chat 运行 → user turn（任务）+ assistant turn（内容/意图/来源）。
+    运行即存储：无需新表；清空对话复用 runs 清理端点。
+    """
+    stmt = (
+        select(AgentRun)
+        .where(AgentRun.project_id == project_id, AgentRun.graph_name == "chat")
+        .order_by(AgentRun.created_at.asc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    turns: list[dict] = []
+    for r in result.scalars().all():
+        try:
+            inp = json.loads(r.input_data or "{}")
+        except Exception:
+            inp = {}
+        try:
+            out = json.loads(r.output_data or "{}")
+        except Exception:
+            out = {}
+        ts = r.created_at.isoformat() if r.created_at else ""
+        task = (inp.get("task") or "").strip()
+        content = (out.get("content") or "").strip() or (f"（出错）{out.get('error')}" if out.get("error") else "")
+        intent = method = None
+        try:
+            data = json.loads(r.events_data or "{}")
+            for ev in data.get("events") or []:
+                if isinstance(ev, dict) and ev.get("type") == "route":
+                    intent, method = ev.get("intent"), ev.get("method")
+                    break
+        except Exception:
+            pass
+        if task:
+            turns.append({"role": "user", "content": task, "ts": ts, "run_id": r.id})
+        turns.append({
+            "role": "assistant", "content": content, "intent": intent, "method": method,
+            "sources": out.get("sources") or [], "saved": bool(out.get("saved")),
+            "is_mock": bool(out.get("is_mock")), "qa": bool(out.get("qa")),
+            "ts": ts, "run_id": r.id,
+        })
+    return {"project_id": project_id, "turns": turns}
 
 
 def _run_duration(r) -> float:

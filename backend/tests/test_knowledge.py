@@ -152,6 +152,24 @@ async def test_hot_meme_update_endpoint(db):
         assert client.put("/api/hot-memes/nonexistent", json={"phrase": "x"}).status_code == 404
 
 
+async def test_qa_history_injection(recording_llm):
+    """L 轮：qa 图把对话历史注入用户消息（answer_qa）"""
+    from app.agents.nodes.qa_nodes import answer_qa
+
+    await answer_qa({
+        "task": "那元婴期呢",
+        "project_id": "p1",
+        "sources": [{"type": "doc", "title": "境界", "content": "炼气→筑基→金丹→元婴"}],
+        "history": [
+            {"role": "user", "content": "修仙境界怎么划分？"},
+            {"role": "assistant", "content": "分为炼气筑基金丹元婴。"},
+        ],
+    })
+    assert "【对话历史" in recording_llm.last_user, recording_llm.last_user[:200]
+    assert "修仙境界怎么划分" in recording_llm.last_user
+    assert "那元婴期呢" in recording_llm.last_user
+
+
 async def test_qa_graph_answers_with_sources(db):
     """K 轮：qa 图检索知识库 → 流式作答带来源"""
     from app.database import async_session_factory
