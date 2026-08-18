@@ -105,3 +105,18 @@ async def search(payload: KnowledgeSearchRequest, project_id: Optional[str] = Qu
     return await KnowledgeService.search(
         payload.query, project_id, payload.top_k, payload.categories, payload.include_memes
     )
+
+
+@router.post("/ask")
+async def ask(payload: KnowledgeSearchRequest, project_id: Optional[str] = Query(None)):
+    """知识问答（K 轮）：检索资料 → LLM 流式作答（qa 图非流式），返回 content/sources"""
+    from app.agents.runner import get_runner
+
+    state = {
+        "graph": "qa", "project_id": project_id, "task": payload.query,
+        "settings_snapshot": {}, "knowledge": [], "sources": [], "draft": None,
+        "review": {}, "reviews": [], "revision_round": 0,
+        "max_revisions": 2, "review_threshold": 75,
+        "final_output": {}, "events": [], "run_id": None,
+    }
+    return await get_runner().ainvoke("qa", state)

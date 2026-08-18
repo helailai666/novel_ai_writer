@@ -149,6 +149,7 @@ import {
   HappyOutline,
   TimeOutline,
   RibbonOutline,
+  ChatbubblesOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -210,6 +211,7 @@ const breadcrumbs = computed(() => {
       else if (paths[2] === 'dashboard') items.push({ label: '📊 仪表盘' })
       else if (paths[2] === 'knowledge') items.push({ label: '📚 知识库' })
       else if (paths[2] === 'memes') items.push({ label: '😂 热梗库' })
+      else if (paths[2] === 'chat') items.push({ label: '💬 AI 对话' })
       else if (paths[2] === 'runs') items.push({ label: '🕐 运行记录' })
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
@@ -244,6 +246,11 @@ const projectMenuOptions = computed(() => {
   const id = route.params.id
   return [
     { type: 'divider', key: 'div-1' },
+    {
+      label: 'AI 对话',
+      key: `/projects/${id}/chat`,
+      icon: renderIcon(ChatbubblesOutline),
+    },
     {
       label: '创作工作台',
       key: `/projects/${id}`,

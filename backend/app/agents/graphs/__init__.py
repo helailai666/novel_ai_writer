@@ -1,4 +1,4 @@
-"""图构建 — setting / chapter / review 三条主图"""
+"""图构建 — setting / chapter / review / qa 四条主图 + chat 顶图"""
 
 import logging
 
@@ -11,6 +11,7 @@ from app.agents.nodes.chapter_nodes import (
     should_rewrite,
     write_draft,
 )
+from app.agents.nodes.qa_nodes import answer_qa, retrieve_qa_context
 from app.agents.nodes.review_nodes import aggregate_review, review_dim, split_review
 from app.agents.nodes.setting_nodes import (
     assemble_context,
@@ -93,6 +94,17 @@ def build_review_graph():
     return g.compile()
 
 
+def build_qa_graph():
+    """知识问答图：retrieve（知识库+web 兜底）→ answer（流式作答）"""
+    g = StateGraph(NovelState)
+    g.add_node("retrieve_qa_context", retrieve_qa_context)
+    g.add_node("answer_qa", answer_qa)
+    g.add_edge(START, "retrieve_qa_context")
+    g.add_edge("retrieve_qa_context", "answer_qa")
+    g.add_edge("answer_qa", END)
+    return g.compile()
+
+
 def build_chat_graph():
     """Supervisor 顶层对话图（自由文本 → 自动路由子图）"""
     from app.agents.graphs.supervisor import build_supervisor_graph
@@ -104,6 +116,7 @@ _BUILDERS = {
     "setting": build_setting_graph,
     "chapter": build_chapter_graph,
     "review": build_review_graph,
+    "qa": build_qa_graph,
     "chat": build_chat_graph,
 }
 

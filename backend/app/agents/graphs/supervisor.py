@@ -31,16 +31,19 @@ _SETTING_KINDS = {
     "大纲": "outline", "剧情大纲": "outline",
 }
 _REVIEW_KEYWORDS = ("审核", "检查", "评估", "评分", "审校", "一致性", "连贯", "伏笔管理")
+# K 轮：知识问答关键词（选较明确的提问词，避免"怎么/哪些"误伤写作/设定意图）
+_QA_KEYWORDS = ("是什么", "什么是", "介绍一下", "有哪些", "讲讲", "说说", "为什么", "解释", "查询", "检索")
 _WRITE_KEYWORDS = ("写", "生成", "创作", "续写", "润色", "章", "正文", "故事")
 
-_VALID_INTENTS = {"review", "setting", "chapter"}
+_VALID_INTENTS = {"review", "setting", "chapter", "qa"}
 _VALID_KINDS = {"world", "character", "item", "skill", "faction", "location", "outline"}
 
 _CLASSIFY_SYSTEM = """你是小说创作平台的意图分类器。根据用户任务，判断应路由到哪条处理流水线：
 - review: 审核/检查/评估既有内容（一致性、逻辑、伏笔、评分等）
 - setting: 生成/设计世界观设定（世界观/角色/道具/技能/势力/地点/大纲）
 - chapter: 写作/续写/润色章节正文
-只输出 JSON：{"intent": "review|setting|chapter", "kind": "world|character|item|skill|faction|location|outline|null"}。
+- qa: 知识问答（询问设定/知识库内容，如"境界怎么划分""有哪些角色"）
+只输出 JSON：{"intent": "review|setting|chapter|qa", "kind": "world|character|item|skill|faction|location|outline|null"}。
 kind 仅在 intent=setting 时填写，其余为 null。"""
 
 # 分类结果缓存（H1 成本门控）：相同任务文本免重复 LLM 调用
@@ -55,11 +58,13 @@ def _classify_key(task: str) -> str:
 def classify(task: str) -> tuple[str, dict]:
     """关键词分类（确定性回退）→ (intent, 补丁字段)
 
-    顺序：审核意图优先（"检查设定一致性"→review）> 设定意图 > 写作意图
+    顺序：审核意图优先 > 知识问答 > 设定意图 > 写作意图
     """
     task = task or ""
     if any(k in task for k in _REVIEW_KEYWORDS):
         return "review", {}
+    if any(k in task for k in _QA_KEYWORDS):
+        return "qa", {}
     for kw, kind in _SETTING_KINDS.items():
         if kw in task:
             return "setting", {"kind": kind}
@@ -127,7 +132,7 @@ def _route(state: NovelState) -> str:
 
 
 def build_supervisor_graph():
-    """chat 图：supervisor → setting/chapter/review 子图"""
+    """chat 图：supervisor → setting/chapter/review/qa 子图"""
     from app.agents.graphs import get_graph
 
     g = StateGraph(NovelState)
@@ -135,12 +140,15 @@ def build_supervisor_graph():
     g.add_node("setting_sub", get_graph("setting"))
     g.add_node("chapter_sub", get_graph("chapter"))
     g.add_node("review_sub", get_graph("review"))
+    g.add_node("qa_sub", get_graph("qa"))
 
     g.add_edge(START, "supervisor")
     g.add_conditional_edges("supervisor", _route, {
-        "setting": "setting_sub", "chapter": "chapter_sub", "review": "review_sub",
+        "setting": "setting_sub", "chapter": "chapter_sub",
+        "review": "review_sub", "qa": "qa_sub",
     })
     g.add_edge("setting_sub", END)
     g.add_edge("chapter_sub", END)
     g.add_edge("review_sub", END)
+    g.add_edge("qa_sub", END)
     return g.compile()

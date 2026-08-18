@@ -322,6 +322,34 @@ async def test_supervisor_keyword_when_llm_disabled(monkeypatch, db):
     assert route["intent"] == "chapter" and route["method"] == "keyword"
 
 
+# ── K 轮 supervisor qa 意图 ───────────────────────────────────────
+
+def test_supervisor_qa_keyword_fallback():
+    """知识问答关键词回退：明确提问词 → qa；不误伤写作/设定意图"""
+    from app.agents.graphs.supervisor import classify
+
+    assert classify("介绍一下这个世界的角色有哪些")[0] == "qa"
+    assert classify("修仙境界体系是什么")[0] == "qa"
+    assert classify("为什么主角不能修仙")[0] == "qa"
+    # 不误伤
+    assert classify("写第一章正文")[0] == "chapter"
+    assert classify("设计一个角色叫林玄")[0] == "setting"
+    assert classify("帮我生成世界观设定")[0] == "setting"
+
+
+async def test_supervisor_llm_classification_routes_qa(monkeypatch, db):
+    """LLM 分类 → qa：chat 图路由到知识问答子图并产出带来源的回答"""
+    llm = ClassifyLLM(model="mock")
+    llm.response = {"intent": "qa", "kind": None}
+    events = await _collect_chat_events(_chat_state("这个世界的修仙境界怎么划分", db), monkeypatch, llm)
+    route = [e for e in events if e["type"] == "route"][0]
+    assert route["intent"] == "qa" and route["method"] == "llm", f"应走 LLM 分类到 qa: {route}"
+    done = [e for e in events if e["type"] == "done"][-1]
+    result = done["result"]
+    assert result.get("qa") is True, "qa 图应产出 qa=True 的 final_output"
+    assert result.get("content"), "qa 图应产出回答内容"
+
+
 # ── H4 技能包管理 ──────────────────────────────────────────────────
 
 def test_skill_manager_create_update_toggle_delete(tmp_path):

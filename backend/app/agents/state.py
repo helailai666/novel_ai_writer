@@ -37,6 +37,7 @@ class NovelState(TypedDict):
     # ── 运行期状态 ──────────────────────────────────────────────
     settings_snapshot: dict[str, Any]           # 检索到的设定快照
     knowledge: list[dict]                       # 知识检索结果（P4 启用）
+    sources: list[dict]                         # QA 图来源（doc/meme/web，K 轮）
     draft: Optional[str]                        # 草稿
     review: dict[str, Any]                      # 审核结果 {score, summary, issues, suggestions, dimension_scores}
     reviews: Annotated[list[dict], add]         # 审核图并行维度结果

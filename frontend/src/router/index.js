@@ -76,6 +76,12 @@ const routes = [
         meta: { title: '热梗库' }
       },
       {
+        path: 'chat',
+        name: 'ProjectChat',
+        component: () => import('@/views/ChatView.vue'),
+        meta: { title: 'AI 对话' }
+      },
+      {
         path: 'runs',
         name: 'ProjectRuns',
         component: () => import('@/views/RunsView.vue'),

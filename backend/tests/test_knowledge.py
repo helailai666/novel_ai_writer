@@ -152,6 +152,51 @@ async def test_hot_meme_update_endpoint(db):
         assert client.put("/api/hot-memes/nonexistent", json={"phrase": "x"}).status_code == 404
 
 
+async def test_qa_graph_answers_with_sources(db):
+    """K 轮：qa 图检索知识库 → 流式作答带来源"""
+    from app.database import async_session_factory
+    from app.services.knowledge_service import KnowledgeService
+
+    async with async_session_factory() as session:
+        await KnowledgeService.ingest_text(
+            session, "修仙境界", "练气→筑基→金丹→元婴→化神，每层分初期中期后期。",
+            category="worldview", tags="修仙", project_id=db,
+        )
+
+    from app.agents.runner import get_runner
+
+    result = await get_runner().ainvoke("qa", {
+        "graph": "qa", "project_id": db, "task": "修仙境界怎么划分",
+        "settings_snapshot": {}, "knowledge": [], "sources": [], "draft": None,
+        "review": {}, "reviews": [], "revision_round": 0,
+        "max_revisions": 2, "review_threshold": 75, "final_output": {}, "events": [], "run_id": None,
+    })
+    assert result.get("content"), "qa 应产出回答"
+    assert result.get("is_mock") is True
+    sources = result.get("sources") or []
+    assert any(s["type"] == "doc" for s in sources), f"应有知识库来源: {sources}"
+
+
+async def test_knowledge_ask_endpoint(db):
+    """K 轮：POST /api/knowledge/ask 非流式问答返回 content+sources"""
+    from fastapi.testclient import TestClient
+
+    import app.main as m
+
+    with TestClient(m.app) as client:
+        client.post("/api/knowledge/ingest", params={
+            "title": "青云宗", "content": "青云宗位于青云山，掌门为玄真真人。",
+            "category": "faction", "tags": "宗门", "project_id": db,
+        })
+        r = client.post(f"/api/knowledge/ask?project_id={db}", json={"query": "青云宗的掌门是谁"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body.get("content"), body
+        assert body.get("is_mock") is True
+        sources = body.get("sources") or []
+        assert any(s["title"] == "青云宗" for s in sources), f"应有知识库来源: {sources}"
+
+
 async def test_chapter_graph_knowledge_injection(db, mock_llm):
     """章节写作图 retrieve_context 应注入知识库内容"""
     from app.database import async_session_factory
