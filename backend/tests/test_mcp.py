@@ -1,5 +1,6 @@
 """MCP 测试 — 服务端真实工具暴露（stdio 握手）/ 客户端桥接外部 server"""
 
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -212,3 +213,111 @@ async def test_mcp_pool_reconnects_after_session_death(tmp_path, monkeypatch):
     r = await registry.execute("mcp_fake4_echo", {"text": "b"})
     assert r.ok and "echo:b" in r.content
     assert counter["n"] == 2, "会话失效后应自动重连一次"
+
+
+# ── I2 连接池参数化（pool_size / 超时 / 重试）──────────────────────
+
+class _FakeMCPResult:
+    def __init__(self, text="ok"):
+        self.content = [type("C", (), {"text": text, "type": "text"})()]
+
+
+class _FakeMCPCallSession:
+    """可编程失败次数的假 MCP 会话（失败计数全局共享：重试的新会话不重复失败）"""
+
+    def __init__(self, shared=None):
+        self.shared = shared or {"fail_left": 0}
+
+    async def call_tool(self, name, args):
+        if self.shared["fail_left"] > 0:
+            self.shared["fail_left"] -= 1
+            raise RuntimeError("boom")
+        await asyncio.sleep(0.01)
+        return _FakeMCPResult(text=f"ok:{name}")
+
+
+def _fake_connect_one(monkeypatch, counter, fail_times=0):
+    """monkeypatch _connect_one：返回假会话并计数（失败次数全局共享）"""
+    import app.core.mcp.client as mcp_client
+
+    shared = {"fail_left": fail_times}
+
+    async def fake(self):
+        counter["created"] += 1
+        from types import SimpleNamespace
+
+        return SimpleNamespace(session=_FakeMCPCallSession(shared), stream_cm=None, busy=False)
+
+    monkeypatch.setattr(mcp_client.McpConnectionPool, "_connect_one", fake)
+    return counter
+
+
+def test_mcp_pool_stdio_forces_single_session():
+    """stdio 传输强制单会话（子进程不宜并发）；SSE 接受 pool_size"""
+    from app.config import settings
+
+    import app.core.mcp.client as mcp_client
+
+    p = mcp_client.McpConnectionPool({"name": "s", "transport": "stdio", "pool_size": 3})
+    assert p._max_sessions == 1
+    p2 = mcp_client.McpConnectionPool({"name": "s2", "transport": "sse", "url": "http://x", "pool_size": 3})
+    assert p2._max_sessions == 3
+    p3 = mcp_client.McpConnectionPool({"name": "s3", "transport": "sse", "url": "http://x"})
+    assert p3._max_sessions == max(1, settings.mcp.default_pool_size)
+
+
+async def test_mcp_pool_sse_pool_size_limits_concurrent_sessions(monkeypatch):
+    """pool_size=2：3 个并发调用只建 2 个会话，全部成功；串行复用不再新建"""
+    import app.core.mcp.client as mcp_client
+
+    counter = _fake_connect_one(monkeypatch, {"created": 0})
+    pool = mcp_client.McpConnectionPool({"name": "sse1", "transport": "sse", "url": "http://x", "pool_size": 2, "max_retries": 0})
+
+    async def call():
+        return await pool.call_tool("t", {})
+
+    results = await asyncio.gather(call(), call(), call())
+    assert all("ok:t" in r for r in results)
+    assert counter["created"] == 2, f"并发下应最多建 2 个会话: {counter['created']}"
+
+    # 串行复用：不新建
+    await pool.call_tool("t", {})
+    assert counter["created"] == 2
+    await pool.close()
+
+
+async def test_mcp_pool_retries_then_succeeds(monkeypatch):
+    """max_retries=1：首次调用失败销毁会话重试，第二次成功"""
+    import app.core.mcp.client as mcp_client
+
+    counter = _fake_connect_one(monkeypatch, {"created": 0}, fail_times=1)
+    pool = mcp_client.McpConnectionPool({"name": "sse2", "transport": "sse", "url": "http://x", "pool_size": 1, "max_retries": 1})
+    result = await pool.call_tool("t", {})
+    assert "ok:t" in result
+    assert counter["created"] == 2, "失败后应重建会话重试"
+    await pool.close()
+
+
+async def test_mcp_pool_max_retries_exhausted_raises(monkeypatch):
+    """始终失败 → max_retries+1 次尝试后抛错"""
+    import pytest
+
+    import app.core.mcp.client as mcp_client
+
+    counter = _fake_connect_one(monkeypatch, {"created": 0}, fail_times=999)
+    pool = mcp_client.McpConnectionPool({"name": "sse3", "transport": "sse", "url": "http://x", "pool_size": 1, "max_retries": 2})
+    with pytest.raises(RuntimeError):
+        await pool.call_tool("t", {})
+    assert counter["created"] == 3, "应尝试 max_retries+1=3 次"
+    await pool.close()
+
+
+def test_mcp_pool_config_refresh_updates_timeout_and_retries():
+    """get_pool 配置刷新：超时/重试生效（pool_size 固定）"""
+    import app.core.mcp.client as mcp_client
+
+    p = mcp_client.McpConnectionPool({"name": "cfg", "transport": "sse", "url": "http://x", "max_retries": 1, "connect_timeout": 5.0})
+    mcp_client._pools["cfg"] = p  # 注册进池管理，验证 get_pool 复用+刷新
+    refreshed = mcp_client.get_pool({"name": "cfg", "transport": "sse", "url": "http://x", "max_retries": 3, "connect_timeout": 12.0})
+    assert refreshed is p
+    assert p.max_retries == 3 and p.connect_timeout == 12.0

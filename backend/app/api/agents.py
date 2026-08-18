@@ -4,9 +4,9 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
@@ -188,8 +188,6 @@ def _run_duration(r) -> float:
 @router.get("/runs/{run_id}")
 async def get_run(run_id: str, db: AsyncSession = Depends(get_db)):
     """运行记录详情：输入/输出 + 压缩事件时间线（G4 可视化）"""
-    from fastapi import HTTPException
-
     result = await db.execute(select(AgentRun).where(AgentRun.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
@@ -215,3 +213,35 @@ async def get_run(run_id: str, db: AsyncSession = Depends(get_db)):
         "token_counts": parsed.get("token_counts", {}),
         "total_tokens": parsed.get("total_tokens", 0),
     }
+
+
+# ── I4 运行记录清理 ──────────────────────────────────────────────
+
+@router.delete("/runs", status_code=200)
+async def clear_runs(
+    project_id: Optional[str] = Query(None),
+    graph: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """按项目/图清空运行记录（必须限定 project_id 或 graph，防误清全库）"""
+    if not project_id and not graph:
+        raise HTTPException(status_code=400, detail="必须提供 project_id 或 graph 限定范围")
+    stmt = delete(AgentRun)
+    if project_id:
+        stmt = stmt.where(AgentRun.project_id == project_id)
+    if graph:
+        stmt = stmt.where(AgentRun.graph_name == graph)
+    result = await db.execute(stmt)
+    await db.commit()
+    return {"deleted": result.rowcount}
+
+
+@router.delete("/runs/{run_id}", status_code=204)
+async def delete_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    """删除单条运行记录"""
+    result = await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="运行记录不存在")
+    await db.delete(run)
+    await db.commit()

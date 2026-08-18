@@ -24,6 +24,15 @@ class KnowledgeDocCreate(BaseModel):
     tags: str = Field(default="", max_length=500)
 
 
+class KnowledgeDocUpdate(BaseModel):
+    """文档更新（全字段可选，仅提交的字段生效）"""
+
+    title: Optional[str] = Field(None, max_length=300)
+    content: Optional[str] = None
+    category: Optional[str] = Field(None, max_length=50)
+    tags: Optional[str] = Field(None, max_length=500)
+
+
 class KnowledgeSearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=300)
     top_k: int = Field(5, ge=1, le=20)
@@ -77,6 +86,12 @@ async def list_docs(
 @router.get("/{doc_id}")
 async def get_doc(doc_id: str, db: AsyncSession = Depends(get_db)):
     return await KnowledgeService.get_doc(db, doc_id)
+
+
+@router.put("/{doc_id}")
+async def update_doc(doc_id: str, payload: KnowledgeDocUpdate, db: AsyncSession = Depends(get_db)):
+    """更新文档（重索引 + 检索缓存失效）"""
+    return await KnowledgeService.update_doc(db, doc_id, payload.model_dump(exclude_unset=True))
 
 
 @router.delete("/{doc_id}", status_code=204)

@@ -16,6 +16,10 @@
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
         </n-button>
+        <n-button type="error" ghost @click="clearAllRuns">
+          <template #icon><n-icon><TrashOutline /></n-icon></template>
+          清空记录
+        </n-button>
       </n-space>
     </div>
 
@@ -105,7 +109,7 @@
 import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage, NTag, NButton, NIcon, NSwitch } from 'naive-ui'
-import { RefreshOutline, EyeOutline } from '@vicons/ionicons5'
+import { RefreshOutline, EyeOutline, TrashOutline } from '@vicons/ionicons5'
 import { agentsAPI } from '../api/index.js'
 
 const route = useRoute()
@@ -261,10 +265,15 @@ const columns = [
     render: (r) => h('span', { style: 'font-size:12px;color:#888' }, `${r.duration_seconds}s`),
   },
   {
-    title: '操作', key: 'actions', width: 90,
-    render: (r) => h(NButton, { size: 'tiny', quaternary: true, onClick: () => openDetail(r) }, {
-      default: () => h('span', [h(NIcon, { size: 14 }, { default: () => h(EyeOutline) }), ' 查看']),
-    }),
+    title: '操作', key: 'actions', width: 140,
+    render: (r) => h('span', [
+      h(NButton, { size: 'tiny', quaternary: true, onClick: () => openDetail(r) }, {
+        default: () => h('span', [h(NIcon, { size: 14 }, { default: () => h(EyeOutline) }), ' 查看']),
+      }),
+      h(NButton, { size: 'tiny', quaternary: true, type: 'error', onClick: () => removeRun(r) }, {
+        default: () => h('span', [h(NIcon, { size: 14 }, { default: () => h(TrashOutline) }), ' 删除']),
+      }),
+    ]),
   },
 ]
 
@@ -295,6 +304,32 @@ async function openDetail(r, silent = false) {
     message.error(e.message || '加载详情失败')
   } finally {
     detailLoading.value = false
+  }
+}
+
+async function removeRun(r) {
+  const ok = await window.confirm(`确认删除运行 #${r.id.slice(0, 8)}（${r.graph_name}）？`)
+  if (!ok) return
+  try {
+    await agentsAPI.deleteRun(r.id)
+    message.success('已删除')
+    if (detail.value.id === r.id) showDetail.value = false
+    await loadRuns()
+  } catch (e) {
+    message.error(e.message || '删除失败')
+  }
+}
+
+async function clearAllRuns() {
+  const ok = await window.confirm('确认清空本项目的全部运行记录？此操作不可恢复。')
+  if (!ok) return
+  try {
+    const res = await agentsAPI.clearRuns({ project_id: projectId.value })
+    message.success(`已清空 ${res.data.deleted} 条运行记录`)
+    showDetail.value = false
+    await loadRuns()
+  } catch (e) {
+    message.error(e.message || '清空失败')
   }
 }
 </script>

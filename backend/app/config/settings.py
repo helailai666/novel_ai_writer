@@ -60,6 +60,9 @@ class MCPSettings(BaseModel):
     servers_file: str = "config/mcp_servers.yaml"
     server_name: str = "novel-writer"
     server_version: str = "0.2.0"
+    default_pool_size: int = 1          # 每 server 默认并发会话数（stdio 强制 1）
+    default_connect_timeout: float = 10.0  # 建连/初始化超时秒数
+    default_max_retries: int = 1        # 调用失败重试次数
 
 
 class SkillSettings(BaseModel):
@@ -154,6 +157,9 @@ class Settings(BaseSettings):
     # ── MCP ───────────────────────────────────────────────────────
     MCP_ENABLED: bool = True
     MCP_SERVERS_FILE: str = "config/mcp_servers.yaml"
+    MCP_DEFAULT_POOL_SIZE: int = 1
+    MCP_DEFAULT_CONNECT_TIMEOUT: float = 10.0
+    MCP_DEFAULT_MAX_RETRIES: int = 1
 
     # ── Skills ────────────────────────────────────────────────────
     SKILLS_DIRS: str = "skills"         # 逗号分隔目录列表
@@ -196,6 +202,9 @@ class Settings(BaseSettings):
         self.mcp = MCPSettings(
             enabled=self.MCP_ENABLED,
             servers_file=self.MCP_SERVERS_FILE,
+            default_pool_size=self.MCP_DEFAULT_POOL_SIZE,
+            default_connect_timeout=self.MCP_DEFAULT_CONNECT_TIMEOUT,
+            default_max_retries=self.MCP_DEFAULT_MAX_RETRIES,
         )
         self.skills = SkillSettings(
             dirs=[d.strip() for d in self.SKILLS_DIRS.split(",") if d.strip()],

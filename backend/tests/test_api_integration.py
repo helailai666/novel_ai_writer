@@ -117,6 +117,33 @@ def test_agent_runs_timeline_and_detail(client, project):
     assert client.get("/api/agents/runs/nonexistent").status_code == 404
 
 
+def test_agent_runs_delete_and_clear(client, project):
+    """I4: 运行记录删除（单条 204/404 + 未限定 400 + 按项目清空）"""
+    for task, name, cat in [("生成世界观", "跑一", "world"), ("生成角色", "跑二", "character")]:
+        r = client.post("/api/agents/run", json={"graph": "setting", "project_id": project, "task": task, "name": name, "category": cat})
+        assert r.status_code == 200
+
+    runs = client.get(f"/api/agents/runs?project_id={project}").json()
+    assert len(runs) == 2
+    run_id = runs[0]["id"]
+
+    # 删除单条
+    assert client.delete(f"/api/agents/runs/{run_id}").status_code == 204
+    assert client.get(f"/api/agents/runs/{run_id}").status_code == 404
+    assert len(client.get(f"/api/agents/runs?project_id={project}").json()) == 1
+
+    # 未限定范围 → 400（防误清全库）
+    assert client.delete("/api/agents/runs").status_code == 400
+
+    # 按项目清空
+    r = client.delete(f"/api/agents/runs?project_id={project}")
+    assert r.status_code == 200 and r.json()["deleted"] == 1
+    assert client.get(f"/api/agents/runs?project_id={project}").json() == []
+
+    # 不存在单条 → 404
+    assert client.delete("/api/agents/runs/nonexistent").status_code == 404
+
+
 def test_knowledge_and_memes_api(client, project):
     r = client.post("/api/knowledge/ingest", params={"title": "神兵", "content": "九天玄剑，剑身刻有九条龙纹。", "category": "item", "project_id": project})
     assert r.status_code == 200

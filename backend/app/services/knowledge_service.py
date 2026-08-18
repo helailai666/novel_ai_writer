@@ -95,6 +95,31 @@ class KnowledgeService:
         return _doc_to_dict(doc)
 
     @staticmethod
+    async def update_doc(db: AsyncSession, doc_id: str, data: dict) -> dict:
+        """更新文档（重索引 + 缓存失效）"""
+        doc = (await db.execute(select(KnowledgeDoc).where(KnowledgeDoc.id == doc_id))).scalar_one_or_none()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        for k, v in data.items():
+            setattr(doc, k, v)
+        await db.commit()
+        await db.refresh(doc)
+        invalidate_knowledge_cache()
+        # 重索引：删旧向量 + 索引新内容
+        try:
+            await _get_indexer().delete_doc(doc_id)
+        except Exception as e:
+            logger.warning(f"更新重索引-删除旧向量失败: {e}")
+        try:
+            await _get_indexer().index_doc(
+                doc.id, doc.content or "",
+                {"project_id": doc.project_id, "title": doc.title, "category": doc.category, "tags": doc.tags},
+            )
+        except Exception as e:
+            logger.warning(f"文档更新索引失败（内容仍已更新）: {e}")
+        return _doc_to_dict(doc)
+
+    @staticmethod
     async def delete_doc(db: AsyncSession, doc_id: str) -> None:
         doc = (await db.execute(select(KnowledgeDoc).where(KnowledgeDoc.id == doc_id))).scalar_one_or_none()
         if not doc:
@@ -151,6 +176,19 @@ class KnowledgeService:
         stmt = stmt.limit(limit).offset(offset)
         rows = (await db.execute(stmt)).scalars().all()
         return [_meme_to_dict(m) for m in rows]
+
+    @staticmethod
+    async def update_meme(db: AsyncSession, meme_id: str, data: dict) -> dict:
+        """更新热梗（缓存失效）"""
+        meme = (await db.execute(select(HotMeme).where(HotMeme.id == meme_id))).scalar_one_or_none()
+        if not meme:
+            raise HTTPException(status_code=404, detail="HotMeme not found")
+        for k, v in data.items():
+            setattr(meme, k, v)
+        await db.commit()
+        await db.refresh(meme)
+        invalidate_knowledge_cache()
+        return _meme_to_dict(meme)
 
     @staticmethod
     async def delete_meme(db: AsyncSession, meme_id: str) -> None:

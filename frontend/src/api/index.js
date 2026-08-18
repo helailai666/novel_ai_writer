@@ -312,6 +312,9 @@ export const knowledgeAPI = {
   createDoc(data, projectId) {
     return http.post('/knowledge', data, { params: { project_id: projectId } })
   },
+  updateDoc(docId, data) {
+    return http.put(`/knowledge/${docId}`, data)
+  },
   ingestText(data, projectId) {
     return http.post('/knowledge/ingest', null, { params: { ...data, project_id: projectId } })
   },
@@ -335,6 +338,9 @@ export const hotMemeAPI = {
   },
   create(data, projectId) {
     return http.post('/hot-memes', data, { params: { project_id: projectId } })
+  },
+  update(memeId, data) {
+    return http.put(`/hot-memes/${memeId}`, data)
   },
   search(q, projectId) {
     return http.get('/hot-memes/search', { params: { q, project_id: projectId } })
@@ -361,6 +367,12 @@ export const agentsAPI = {
   },
   getRun(runId) {
     return http.get(`/agents/runs/${runId}`)
+  },
+  deleteRun(runId) {
+    return http.delete(`/agents/runs/${runId}`)
+  },
+  clearRuns(params) {
+    return http.delete('/agents/runs', { params })
   }
 }
 

@@ -3,15 +3,20 @@
 配置格式（backend/config/mcp_servers.yaml）：
 - transport: stdio（command/args）或 sse（url）
 - tool_allowlist: 允许桥接的工具白名单（空=全部）
+- pool_size: 可选，并发会话数（stdio 强制 1；SSE 默认取 MCP_DEFAULT_POOL_SIZE）
+- connect_timeout: 可选，建连/初始化超时秒数（默认 MCP_DEFAULT_CONNECT_TIMEOUT）
+- max_retries: 可选，调用失败重试次数（默认 MCP_DEFAULT_MAX_RETRIES）
 桥接工具命名: mcp_<server_name>_<tool_name>
-调用语义（G3）：每个 server 维护长连接会话池，跨调用复用（stdio 子进程
-不反复启停）；会话失效自动重连（每次调用最多重连一次）。
+调用语义（G3/G4）：每 server 维护长连接会话池，跨调用复用（stdio 子进程
+不反复启停）；会话失效自动销毁重建（每次调用最多重试 max_retries 次）。
 """
 
 import asyncio
 import logging
+from types import SimpleNamespace
 from typing import Optional
 
+from app.config import settings
 from app.core.tools.registry import get_registry
 
 logger = logging.getLogger(__name__)
@@ -34,43 +39,62 @@ def _open_ctx(config: dict):
 
 
 class McpConnectionPool:
-    """单个外部 MCP server 的长连接池（G3）
+    """单个外部 MCP server 的长连接池（G3 单会话 → I2 参数化多会话）
 
     - 惰性建连：首次调用工具时才建立连接
-    - 串行复用：单会话 + asyncio.Lock（stdio 子进程不宜并发调用）
-    - 断线自愈：调用/发现失败时销毁会话，重连一次并重试
+    - 容量控制：stdio 强制 1 会话（子进程不宜并发）；SSE 支持 pool_size>1
+      并发会话（忙会话不可复用，满额时等待）
+    - 断线自愈：调用/发现失败时销毁该会话，重试（最多 max_retries 次）
+    - 超时保护：建连/初始化受 connect_timeout 约束
     """
 
     def __init__(self, config: dict):
         self.config = config
         self.name = config.get("name", "external")
-        self._session: Optional[object] = None   # ClientSession
-        self._stream_cm: Optional[object] = None  # stdio/sse 流上下文管理器
-        self._lock = asyncio.Lock()
+        transport = config.get("transport", "stdio")
+        # stdio 子进程串行：强制 1；SSE 取条目配置或全局默认
+        requested = int(config.get("pool_size") or settings.mcp.default_pool_size)
+        self._max_sessions = 1 if transport == "stdio" else max(1, requested)
+        self.connect_timeout = float(config.get("connect_timeout") or settings.mcp.default_connect_timeout)
+        self.max_retries = max(0, int(config.get("max_retries") or settings.mcp.default_max_retries))
+        self._sessions: list[SimpleNamespace] = []  # {session, stream_cm, busy}
+        self._lock = asyncio.Lock()          # 建连/清理/簿记串行
+        self._sem = asyncio.Semaphore(self._max_sessions)  # 容量门闩
         self._closed = False
 
     # ── 连接生命周期 ────────────────────────────────────────────
 
-    async def _connect(self) -> None:
-        """建立新会话（流保持打开，供后续调用复用）"""
+    async def _connect_one(self) -> SimpleNamespace:
+        """新建一个会话（流保持打开；connect_timeout 保护）"""
         from mcp import ClientSession
 
+        ps = SimpleNamespace(session=None, stream_cm=None, busy=False)
         cm = _open_ctx(self.config)
-        read, write = await cm.__aenter__()  # 保持流打开
+        read, write = await asyncio.wait_for(cm.__aenter__(), timeout=self.connect_timeout)
         try:
             session = ClientSession(read, write)
-            await session.__aenter__()
-            await session.initialize()
+            await asyncio.wait_for(session.__aenter__(), timeout=self.connect_timeout)
+            await asyncio.wait_for(session.initialize(), timeout=self.connect_timeout)
         except BaseException:
             await cm.__aexit__(None, None, None)
             raise
-        self._stream_cm = cm
-        self._session = session
+        ps.stream_cm = cm
+        ps.session = session
+        return ps
 
-    async def _disconnect(self) -> None:
-        """销毁当前会话（幂等）"""
-        session, self._session = self._session, None
-        cm, self._stream_cm = self._stream_cm, None
+    async def _connect(self) -> None:
+        """新建一个会话加入池（容量已满时跳过）— 测试打桩点"""
+        async with self._lock:
+            if self._closed or len(self._sessions) >= self._max_sessions:
+                return
+            ps = await self._connect_one()
+            self._sessions.append(ps)
+
+    @staticmethod
+    async def _close_one(ps: SimpleNamespace) -> None:
+        """关闭单个会话（幂等；不涉及池簿记）"""
+        session, ps.session = ps.session, None
+        cm, ps.stream_cm = ps.stream_cm, None
         if session is not None:
             try:
                 await session.__aexit__(None, None, None)
@@ -82,46 +106,92 @@ class McpConnectionPool:
             except Exception as e:
                 logger.debug(f"MCP 流关闭异常: {e}")
 
+    async def _discard(self, ps: SimpleNamespace) -> None:
+        """从池中移除并关闭一个会话（调用失败后）"""
+        async with self._lock:
+            if ps in self._sessions:
+                self._sessions.remove(ps)
+                await self._close_one(ps)
+
+    async def _disconnect(self) -> None:
+        """销毁全部会话（幂等；测试/关闭用）"""
+        async with self._lock:
+            sessions, self._sessions = self._sessions, []
+            for ps in sessions:
+                await self._close_one(ps)
+
     async def close(self) -> None:
         """关闭连接池（应用退出时调用）"""
         self._closed = True
-        async with self._lock:
-            await self._disconnect()
+        await self._disconnect()
+
+    # ── 会话获取/释放 ────────────────────────────────────────────
+
+    async def _acquire(self) -> SimpleNamespace:
+        """获取一个空闲会话（无则新建，满额等待），标记 busy"""
+        await self._sem.acquire()
+        try:
+            while True:
+                async with self._lock:
+                    idle = next((s for s in self._sessions if not s.busy and s.session is not None), None)
+                    if idle is not None:
+                        idle.busy = True
+                        return idle
+                    if len(self._sessions) < self._max_sessions:
+                        need_new = True
+                    else:
+                        need_new = False
+                if need_new:
+                    await self._connect()  # 新建（计数打桩点）
+                    continue
+                await asyncio.sleep(0.005)  # 满额且全忙 → 等释放
+        except BaseException:
+            self._sem.release()
+            raise
+
+    def _release(self, ps: SimpleNamespace) -> None:
+        """归还会话（已销毁的跳过忙标记）"""
+        if ps in self._sessions:
+            ps.busy = False
+        self._sem.release()
 
     # ── 工具发现与调用 ──────────────────────────────────────────
 
     async def list_tools(self):
-        """列出远端工具（复用池连接，失效自动重连一次）"""
-        async with self._lock:
-            if self._session is None:
-                await self._connect()
+        """列出远端工具（复用池连接，失效自动重建一次）"""
+        ps = await self._acquire()
+        try:
             try:
-                return (await self._session.list_tools()).tools
+                return (await ps.session.list_tools()).tools
             except Exception as e:
-                logger.warning(f"MCP 工具发现失败，重连: {self.name}: {e}")
-                await self._disconnect()
-                await self._connect()
-                return (await self._session.list_tools()).tools
+                logger.warning(f"MCP 工具发现失败，重建会话: {self.name}: {e}")
+                await self._discard(ps)
+                ps = await self._acquire()
+                return (await ps.session.list_tools()).tools
+        finally:
+            self._release(ps)
 
     async def call_tool(self, tool_name: str, args: dict) -> str:
-        """调用远端工具，返回文本拼接结果（失效自动重连一次）"""
+        """调用远端工具，返回文本拼接结果（失效自动重建，最多重试 max_retries 次）"""
         if self._closed:
             raise RuntimeError(f"MCP 连接池已关闭: {self.name}")
-        async with self._lock:
-            if self._session is None:
-                await self._connect()
+        last_err: Optional[Exception] = None
+        for attempt in range(self.max_retries + 1):
+            ps = await self._acquire()
             try:
-                result = await self._session.call_tool(tool_name, args)
+                result = await ps.session.call_tool(tool_name, args)
+                texts = [
+                    c.text for c in result.content
+                    if hasattr(c, "text") and getattr(c, "type", "") == "text"
+                ]
+                return "\n".join(texts) or "(无文本返回)"
             except Exception as e:
-                logger.warning(f"MCP 调用失败，重连一次: {self.name}.{tool_name}: {e}")
-                await self._disconnect()
-                await self._connect()
-                result = await self._session.call_tool(tool_name, args)
-            texts = [
-                c.text for c in result.content
-                if hasattr(c, "text") and getattr(c, "type", "") == "text"
-            ]
-            return "\n".join(texts) or "(无文本返回)"
+                last_err = e
+                logger.warning(f"MCP 调用失败，销毁会话重试: {self.name}.{tool_name} (第{attempt + 1}次): {e}")
+                await self._discard(ps)
+            finally:
+                self._release(ps)
+        raise last_err or RuntimeError(f"MCP 调用失败: {self.name}.{tool_name}")
 
 
 # ── 连接池管理（进程内，按 server name 复用）─────────────────────
@@ -137,7 +207,9 @@ def get_pool(config: dict) -> McpConnectionPool:
         pool = McpConnectionPool(config)
         _pools[name] = pool
     elif not pool._closed:
-        pool.config = config  # 刷新配置（下次重连生效）
+        pool.config = config  # 刷新配置（超时/重试下次生效；pool_size 首次建池后固定）
+        pool.connect_timeout = float(config.get("connect_timeout") or settings.mcp.default_connect_timeout)
+        pool.max_retries = max(0, int(config.get("max_retries") or settings.mcp.default_max_retries))
     return pool
 
 

@@ -10,7 +10,7 @@
           <template #icon><n-icon><SearchOutline /></n-icon></template>
           检索
         </n-button>
-        <n-button @click="showIngest = true" type="primary">
+        <n-button @click="openCreate" type="primary">
           <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
           导入知识
         </n-button>
@@ -55,9 +55,9 @@
       </n-drawer-content>
     </n-drawer>
 
-    <!-- 导入抽屉 -->
+    <!-- 导入/编辑抽屉 -->
     <n-drawer v-model:show="showIngest" :width="560" placement="right">
-      <n-drawer-content title="📥 导入知识">
+      <n-drawer-content :title="editingDoc ? `✏️ 编辑文档 · ${editingDoc.title}` : '📥 导入知识'">
         <n-form label-placement="top">
           <n-form-item label="文本摄取">
             <n-input v-model:value="ingest.title" placeholder="标题" style="margin-bottom:8px" />
@@ -67,13 +67,15 @@
               <n-input v-model:value="ingest.tags" placeholder="标签(逗号分隔)" />
             </n-space>
           </n-form-item>
-          <n-form-item label="文件上传（txt/md）">
+          <n-form-item v-if="!editingDoc" label="文件上传（txt/md）">
             <n-upload :show-file-list="false" :custom-request="handleUpload">
               <n-button>选择文件</n-button>
             </n-upload>
           </n-form-item>
           <n-space justify="end">
-            <n-button type="primary" :loading="ingestLoading" @click="doIngest">导入</n-button>
+            <n-button type="primary" :loading="ingestLoading" @click="doIngest">
+              {{ editingDoc ? '保存修改' : '导入' }}
+            </n-button>
           </n-space>
         </n-form>
       </n-drawer-content>
@@ -85,7 +87,7 @@
 import { ref, reactive, computed, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
-import { SearchOutline, CloudUploadOutline, TrashOutline } from '@vicons/ionicons5'
+import { SearchOutline, CloudUploadOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
 import { knowledgeAPI } from '../api/index.js'
 
 const route = useRoute()
@@ -100,6 +102,7 @@ const searchResults = ref([])
 const openSearch = ref(false)
 const showIngest = ref(false)
 const ingestLoading = ref(false)
+const editingDoc = ref(null)
 const ingest = reactive({ title: '', content: '', category: 'general', tags: '' })
 
 const pagination = { pageSize: 20 }
@@ -110,8 +113,11 @@ const columns = [
   { title: '来源', key: 'source', width: 140 },
   { title: '更新时间', key: 'updated_at', width: 180 },
   {
-    title: '操作', key: 'actions', width: 90,
-    render: (r) => h('n-button', { size: 'tiny', quaternary: true, type: 'error', onClick: () => removeDoc(r) }, { icon: () => h('n-icon', null, { default: () => h(TrashOutline) }) }),
+    title: '操作', key: 'actions', width: 140,
+    render: (r) => h('span', [
+      h('n-button', { size: 'tiny', quaternary: true, onClick: () => openEdit(r) }, { icon: () => h('n-icon', null, { default: () => h(CreateOutline) }) }),
+      h('n-button', { size: 'tiny', quaternary: true, type: 'error', onClick: () => removeDoc(r) }, { icon: () => h('n-icon', null, { default: () => h(TrashOutline) }) }),
+    ]),
   },
 ]
 
@@ -135,6 +141,24 @@ async function doSearch() {
   searchResults.value = [...(res.data.docs || []), ...(res.data.memes || [])]
 }
 
+function openCreate() {
+  editingDoc.value = null
+  ingest.title = ''
+  ingest.content = ''
+  ingest.category = 'general'
+  ingest.tags = ''
+  showIngest.value = true
+}
+
+function openEdit(doc) {
+  editingDoc.value = doc
+  ingest.title = doc.title || ''
+  ingest.content = doc.content || ''
+  ingest.category = doc.category || 'general'
+  ingest.tags = doc.tags || ''
+  showIngest.value = true
+}
+
 async function doIngest() {
   if (!ingest.title || !ingest.content) {
     message.warning('请填写标题与内容')
@@ -142,12 +166,18 @@ async function doIngest() {
   }
   ingestLoading.value = true
   try {
-    await knowledgeAPI.ingestText({ ...ingest }, projectId.value)
-    message.success('知识已导入并索引')
+    if (editingDoc.value) {
+      await knowledgeAPI.updateDoc(editingDoc.value.id, { ...ingest })
+      message.success('文档已更新并重新索引')
+    } else {
+      await knowledgeAPI.ingestText({ ...ingest }, projectId.value)
+      message.success('知识已导入并索引')
+    }
     showIngest.value = false
+    editingDoc.value = null
     loadDocs()
   } catch (e) {
-    message.error(e.message || '导入失败')
+    message.error(e.message || '保存失败')
   } finally {
     ingestLoading.value = false
   }

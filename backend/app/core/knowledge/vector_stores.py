@@ -1,11 +1,15 @@
-"""向量存储抽象 — Chroma（默认）/ Mock（内存）
+"""向量存储抽象 — Chroma（默认）/ Local（numpy 持久化）/ Mock（内存）
 
 统一接口：add / query / delete / count
 条目结构：id, vector, text, metadata
+LocalVectorStore（I1）：无外部依赖的确定性离线向量检索，向量与元数据
+以 JSON 持久化到 persist_dir，重启后自动加载。
 """
 
+import json
 import logging
 import math
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
@@ -78,6 +82,105 @@ class MockVectorStore(VectorStore):
         return len(self._items)
 
 
+class LocalVectorStore(VectorStore):
+    """numpy 暴力余弦检索 + JSON 持久化（I1，无外部依赖）
+
+    - 持久化文件: <persist_dir>/<collection>.json（含全部条目与向量）
+    - 每次变更（add/delete）即落盘；query 用向量化余弦全量扫描
+    - where 语义与 Mock 一致（元数据等值匹配；None 值匹配缺失键）
+    """
+
+    name = "local"
+
+    def __init__(self, persist_dir: str = "./data/vectorstore", collection: str = "novel_knowledge"):
+        self.persist_dir = persist_dir
+        self.collection = collection
+        self._file = os.path.join(persist_dir, f"{collection}.json")
+        self._items: list[dict] = []
+        self._load()
+
+    # ── 持久化 ──────────────────────────────────────────────────
+
+    def _load(self) -> None:
+        if not os.path.exists(self._file):
+            return
+        try:
+            with open(self._file, encoding="utf-8") as f:
+                data = json.load(f)
+            self._items = data.get("items", []) or []
+            logger.info(f"Local 向量存储加载: {self._file}（{len(self._items)} 条）")
+        except Exception as e:
+            logger.warning(f"Local 向量存储加载失败（空启动）: {e}")
+            self._items = []
+
+    def _save(self) -> None:
+        try:
+            os.makedirs(self.persist_dir, exist_ok=True)
+            tmp = self._file + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"items": self._items}, f, ensure_ascii=False)
+            os.replace(tmp, self._file)
+        except Exception as e:
+            logger.warning(f"Local 向量存储保存失败: {e}")
+
+    # ── 接口 ────────────────────────────────────────────────────
+
+    async def add(self, ids, vectors, texts, metadatas) -> None:
+        for i, vid in enumerate(ids):
+            self._items.append({"id": vid, "vector": vectors[i], "text": texts[i], "metadata": metadatas[i]})
+        self._save()
+
+    async def query(self, vector, top_k=5, where=None) -> list[dict]:
+        import numpy as np
+
+        if not self._items:
+            return []
+        q = np.asarray(vector, dtype=float)
+        if q.ndim == 1:
+            q = q.reshape(1, -1)
+        qn = np.linalg.norm(q, axis=1, keepdims=True)
+        qn[qn == 0] = 1.0
+        q = q / qn
+
+        mat = np.asarray([it["vector"] for it in self._items], dtype=float)
+        mat = mat / np.maximum(np.linalg.norm(mat, axis=1, keepdims=True), 1e-9)
+        scores = mat @ q.T  # (N, 1) 余弦相似度
+        scores = scores.ravel()
+
+        order = np.argsort(-scores)
+        out: list[dict] = []
+        for idx in order:
+            item = self._items[int(idx)]
+            meta = item["metadata"] or {}
+            if where:
+                skip = False
+                for k, v in where.items():
+                    if meta.get(k) != v and not (v is None and k not in meta):
+                        skip = True
+                        break
+                if skip:
+                    continue
+            out.append({
+                "id": item["id"],
+                "text": item["text"],
+                "metadata": meta,
+                "score": round(float(scores[int(idx)]), 4),
+            })
+            if len(out) >= top_k:
+                break
+        return out
+
+    async def delete(self, ids) -> None:
+        idset = set(ids)
+        before = len(self._items)
+        self._items = [it for it in self._items if it["id"] not in idset]
+        if len(self._items) != before:
+            self._save()
+
+    async def count(self) -> int:
+        return len(self._items)
+
+
 class ChromaVectorStore(VectorStore):
     """Chroma 持久化向量存储"""
 
@@ -130,5 +233,11 @@ def create_vector_store(backend: Optional[str] = None) -> VectorStore:
             return ChromaVectorStore(persist_dir=settings.vector_store.persist_dir)
         except Exception as e:
             logger.warning(f"Chroma 初始化失败，降级 Mock 向量存储: {e}")
+            return MockVectorStore()
+    if name == "local":
+        try:
+            return LocalVectorStore(persist_dir=settings.vector_store.persist_dir)
+        except Exception as e:
+            logger.warning(f"Local 向量存储初始化失败，降级 Mock: {e}")
             return MockVectorStore()
     return MockVectorStore()

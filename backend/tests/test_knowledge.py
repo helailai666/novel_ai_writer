@@ -103,6 +103,55 @@ async def test_knowledge_api_e2e(db):
         assert len(r.json()) == 1
 
 
+async def test_knowledge_doc_update_endpoint(db):
+    """I3: PUT /api/knowledge/{id} 更新文档 → 重索引 + 检索缓存失效"""
+    from fastapi.testclient import TestClient
+
+    import app.main as m
+
+    with TestClient(m.app) as client:
+        r = client.post("/api/knowledge/ingest", params={
+            "title": "旧标题", "content": "旧内容：玄铁重剑重一百斤。", "category": "history", "tags": "武器", "project_id": db,
+        })
+        doc_id = r.json()["id"]
+
+        # 先检索一次（填充缓存）
+        r1 = client.post(f"/api/knowledge/search?project_id={db}", json={"query": "玄铁", "top_k": 5})
+        assert any("旧标题" in d["title"] for d in r1.json()["docs"])
+
+        # 更新
+        r = client.put(f"/api/knowledge/{doc_id}", json={"title": "新标题", "content": "新内容：青锋剑轻如无物。", "tags": "武器,剑"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["title"] == "新标题" and "青锋剑" in body["content"]
+
+        # 缓存已失效：旧词不再命中该文档，新词命中
+        r2 = client.post(f"/api/knowledge/search?project_id={db}", json={"query": "青锋剑", "top_k": 5})
+        assert any("新标题" in d["title"] for d in r2.json()["docs"]), "更新后新内容应可检索"
+        r3 = client.post(f"/api/knowledge/search?project_id={db}", json={"query": "玄铁", "top_k": 5})
+        assert not any(d["id"] == doc_id for d in r3.json()["docs"]), "更新后旧内容不应再命中（缓存已失效）"
+
+        assert client.put("/api/knowledge/nonexistent", json={"title": "x"}).status_code == 404
+
+
+async def test_hot_meme_update_endpoint(db):
+    """I3: PUT /api/hot-memes/{id} 更新热梗"""
+    from fastapi.testclient import TestClient
+
+    import app.main as m
+
+    with TestClient(m.app) as client:
+        r = client.post(f"/api/hot-memes?project_id={db}", json={"phrase": "老六", "meaning": "狡猾的人", "usage_example": "他是真老六", "category": "吐槽"})
+        meme_id = r.json()["id"]
+        r = client.put(f"/api/hot-memes/{meme_id}", json={"meaning": "专门使阴招的人", "popularity": 5})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["meaning"] == "专门使阴招的人" and body["popularity"] == 5
+        rows = client.get(f"/api/hot-memes/search?q=老六&project_id={db}").json()
+        assert rows[0]["meaning"] == "专门使阴招的人"
+        assert client.put("/api/hot-memes/nonexistent", json={"phrase": "x"}).status_code == 404
+
+
 async def test_chapter_graph_knowledge_injection(db, mock_llm):
     """章节写作图 retrieve_context 应注入知识库内容"""
     from app.database import async_session_factory

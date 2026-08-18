@@ -21,6 +21,17 @@ class HotMemeCreate(BaseModel):
     popularity: int = Field(0, ge=0)
 
 
+class HotMemeUpdate(BaseModel):
+    """热梗更新（全字段可选，仅提交的字段生效）"""
+
+    phrase: Optional[str] = Field(None, max_length=100)
+    meaning: Optional[str] = None
+    usage_example: Optional[str] = None
+    category: Optional[str] = Field(None, max_length=50)
+    tags: Optional[str] = Field(None, max_length=300)
+    popularity: Optional[int] = Field(None, ge=0)
+
+
 @router.post("", status_code=201)
 async def create_meme(payload: HotMemeCreate, project_id: Optional[str] = Query(None), db: AsyncSession = Depends(get_db)):
     return await KnowledgeService.create_meme(db, payload.model_dump(), project_id=project_id)
@@ -45,3 +56,9 @@ async def search_memes(q: str = Query(..., min_length=1), project_id: Optional[s
 @router.delete("/{meme_id}", status_code=204)
 async def delete_meme(meme_id: str, db: AsyncSession = Depends(get_db)):
     await KnowledgeService.delete_meme(db, meme_id)
+
+
+@router.put("/{meme_id}")
+async def update_meme(meme_id: str, payload: HotMemeUpdate, db: AsyncSession = Depends(get_db)):
+    """更新热梗（检索缓存失效）"""
+    return await KnowledgeService.update_meme(db, meme_id, payload.model_dump(exclude_unset=True))
