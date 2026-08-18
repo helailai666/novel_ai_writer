@@ -1,90 +1,369 @@
 <template>
-  <n-page-header @back="$router.back()">
-    <template #title>🔍 项目审核</template>
-  </n-page-header>
+  <n-spin :show="loading">
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <div class="page-title">
+        <div class="page-title-icon">🔍</div>
+        <div>
+          <h2>项目审核</h2>
+          <n-text depth="3">8 大维度审核 · 评分 0-100 · 问题与建议逐条列出</n-text>
+        </div>
+      </div>
+      <div class="page-actions">
+        <n-button type="primary" :loading="runningAll" @click="runAll">
+          <template #icon><n-icon><SparklesOutline /></n-icon></template>
+          运行全部维度
+        </n-button>
+      </div>
+    </div>
 
-  <n-grid :cols="4" :x-gap="16" :y-gap="16" style="margin-top:20px;">
-    <n-grid-item v-for="item in items" :key="item.key">
-      <n-card :title="item.icon + ' ' + item.label" hoverable @click="run(item.key)">
-        <p style="color:#888;font-size:13px;">{{ item.desc }}</p>
-        <template #footer>
-          <n-tag v-if="item.result" :type="item.result.pass ? 'success' : 'warning'">
-            {{ item.result.pass ? '✅' : '⚠️' }} {{ item.result.score }}
-          </n-tag>
-          <n-tag v-else type="default">待运行</n-tag>
-        </template>
-      </n-card>
-    </n-grid-item>
-  </n-grid>
+    <n-grid :cols="isMobile ? 1 : 3" :x-gap="18" responsive="screen">
+      <!-- ══ 待审核内容 ══ -->
+      <n-grid-item span="3 m:1">
+        <n-card class="review-card">
+          <template #header>
+            <span class="card-title">📄 待审核内容</span>
+          </template>
 
-  <!-- 综合报告 -->
-  <n-button type="primary" block style="margin-top:16px;" @click="runComprehensive" :loading="compLoading">
-    📊 生成完整审校报告
-  </n-button>
+          <n-form label-placement="top" size="small">
+            <n-form-item label="选择章节（自动填充正文）">
+              <n-select
+                v-model:value="selectedChapterId"
+                :options="chapterOptions"
+                clearable
+                filterable
+                placeholder="选择要审核的章节"
+                @update:value="onPickChapter"
+              />
+            </n-form-item>
+            <n-form-item label="或直接粘贴正文">
+              <n-input
+                v-model:value="content"
+                type="textarea"
+                :rows="14"
+                placeholder="粘贴要审核的章节正文..."
+                class="content-area"
+              />
+            </n-form-item>
+            <n-form-item label="补充上下文（章节梗概 / 设定提示，可选）">
+              <n-input
+                v-model:value="context"
+                type="textarea"
+                :rows="3"
+                placeholder="如：本章是主角拜入宗门的场景，前文已铺垫主角出身孤儿..."
+              />
+            </n-form-item>
+          </n-form>
 
-  <!-- 结果展示 -->
-  <n-card v-if="currentResult" title="审核结果" style="margin-top:16px;">
-    <pre style="white-space:pre-wrap;font-size:14px;line-height:1.8;">{{ currentResult }}</pre>
-  </n-card>
+          <n-alert v-if="!content.trim()" type="info" :bordered="false" style="margin-top: 4px">
+            <template #header>💡 提示</template>
+            选择一个章节或粘贴正文后，点击上方「运行全部维度」或右侧任意维度卡片。
+          </n-alert>
+        </n-card>
+      </n-grid-item>
+
+      <!-- ══ 维度网格 + 结果 ══ -->
+      <n-grid-item span="3 m:2">
+        <n-grid :cols="isMobile ? 1 : 2" :x-gap="14" :y-gap="14">
+          <n-grid-item v-for="item in items" :key="item.key">
+            <n-card
+              class="dim-card hover-card"
+              :class="{ 'is-running': item.loading }"
+              @click="runOne(item)"
+            >
+              <template #header>
+                <div class="dim-head">
+                  <span class="dim-icon">{{ item.icon }}</span>
+                  <span class="dim-label">{{ item.label }}</span>
+                </div>
+              </template>
+              <template #header-extra>
+                <n-spin v-if="item.loading" size="small" />
+                <n-tag
+                  v-else-if="item.result"
+                  size="small"
+                  :type="scoreTagType(item.result.score)"
+                  :bordered="false"
+                  round
+                >
+                  {{ item.result.score }} 分
+                </n-tag>
+                <n-tag v-else size="small" type="default" :bordered="false" round>待运行</n-tag>
+              </template>
+              <n-ellipsis :line-clamp="2" class="dim-desc">{{ item.desc }}</n-ellipsis>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
+
+        <!-- ══ 结果面板 ══ -->
+        <n-card v-if="currentResult" class="review-card" style="margin-top: 16px;">
+          <template #header>
+            <div class="result-head">
+              <span class="card-title">{{ currentItem.icon }} {{ currentItem.label }} · 审核结果</span>
+              <n-progress
+                type="circle"
+                :percentage="currentResult.score"
+                :stroke-width="8"
+                :color="scoreColor(currentResult.score)"
+                :rail-color="'#F0EFEA'"
+                style="width: 64px"
+              />
+            </div>
+          </template>
+
+          <n-text depth="2" style="display:block; margin-bottom: 12px;">{{ currentResult.summary }}</n-text>
+
+          <template v-if="currentResult.highlights?.length">
+            <div class="result-block">
+              <div class="result-block-title">✨ 亮点</div>
+              <ul class="result-list good">
+                <li v-for="(hl, i) in currentResult.highlights" :key="i">{{ hl }}</li>
+              </ul>
+            </div>
+          </template>
+
+          <template v-if="currentResult.issues?.length">
+            <div class="result-block">
+              <div class="result-block-title">⚠️ 发现的问题</div>
+              <ul class="result-list bad">
+                <li v-for="(it, i) in currentResult.issues" :key="i">{{ it }}</li>
+              </ul>
+            </div>
+          </template>
+
+          <template v-if="currentResult.suggestions?.length">
+            <div class="result-block">
+              <div class="result-block-title">💡 改进建议</div>
+              <ul class="result-list">
+                <li v-for="(sg, i) in currentResult.suggestions" :key="i">{{ sg }}</li>
+              </ul>
+            </div>
+          </template>
+
+          <n-empty
+            v-if="!currentResult.issues?.length && !currentResult.suggestions?.length && !currentResult.highlights?.length"
+            description="该维度未返回详细条目" size="small"
+          />
+        </n-card>
+      </n-grid-item>
+    </n-grid>
+  </n-spin>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+/**
+ * ReviewView.vue — 项目审核（适配后端 ReviewResponse: score/summary/issues/suggestions/highlights）
+ * 维度端点: consistency/logic/foreshadowing/character-arc/pacing/prose/reader-perspective/comprehensive
+ */
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { reviewAPI } from '../api/index.js'
+import { useMessage } from 'naive-ui'
+import { SparklesOutline } from '@vicons/ionicons5'
+import { reviewAPI, writingAPI } from '../api/index.js'
 
 const route = useRoute()
+const message = useMessage()
 const pid = () => route.params.id
-const currentResult = ref('')
-const compLoading = ref(false)
+
+const isMobile = ref(false)
+function checkScreen() { isMobile.value = window.innerWidth < 768 }
+onMounted(() => { checkScreen(); window.addEventListener('resize', checkScreen) })
+onUnmounted(() => window.removeEventListener('resize', checkScreen))
+
+const loading = ref(false)
+const runningAll = ref(false)
+const chapters = ref([])
+const selectedChapterId = ref(null)
+const content = ref('')
+const context = ref('')
+const currentItem = ref(null)
+const currentResult = ref(null)
+
+const chapterOptions = computed(() =>
+  chapters.value.map((c) => ({
+    label: `第${c.chapter_number}章 ${c.title || ''}`.trim(),
+    value: c.id,
+  }))
+)
+
+function onPickChapter(id) {
+  const ch = chapters.value.find((c) => c.id === id)
+  if (ch) {
+    content.value = ch.content || ''
+    if (!context.value) {
+      context.value = `章节梗概：${ch.title || `第${ch.chapter_number}章`}`
+    }
+  }
+}
 
 const items = ref([
-  { key: 'consistency', icon: '✅', label: '设定一致性', desc: '检查内容是否与所有设定匹配', result: null },
-  { key: 'foreshadowing', icon: '🔮', label: '伏笔追踪', desc: '伏笔设置与回收情况', result: null },
-  { key: 'pacing', icon: '📈', label: '节奏分析', desc: '爽点密度/冲突频率/高潮间隔', result: null },
-  { key: 'prose', icon: '✏️', label: '文笔评估', desc: '描写/对话/语法/语感评分', result: null },
-  { key: 'continuity', icon: '🔄', label: '连贯性', desc: '剧情衔接/时间线/角色状态', result: null },
-  { key: 'logic', icon: '🧠', label: '逻辑检查', desc: '剧情逻辑/因果关系', result: null },
-  { key: 'character_arc', icon: '👤', label: '人物弧光', desc: '角色成长曲线一致性', result: null },
-  { key: 'reader_perspective', icon: '👁️', label: '读者视角', desc: '阅读体验/情感共鸣', result: null },
+  { key: 'consistency', icon: '✅', label: '设定一致性', desc: '检查内容是否与所有设定匹配', result: null, loading: false },
+  { key: 'logic', icon: '🧠', label: '逻辑检查', desc: '剧情逻辑 / 因果关系', result: null, loading: false },
+  { key: 'foreshadowing', icon: '🔮', label: '伏笔追踪', desc: '伏笔设置与回收情况', result: null, loading: false },
+  { key: 'character-arc', icon: '👤', label: '人物弧光', desc: '角色成长曲线一致性', result: null, loading: false },
+  { key: 'pacing', icon: '📈', label: '节奏分析', desc: '爽点密度 / 冲突频率 / 高潮间隔', result: null, loading: false },
+  { key: 'prose', icon: '✏️', label: '文笔评估', desc: '描写 / 对话 / 语法 / 语感评分', result: null, loading: false },
+  { key: 'reader-perspective', icon: '👁️', label: '读者视角', desc: '阅读体验 / 情感共鸣', result: null, loading: false },
+  { key: 'comprehensive', icon: '📊', label: '综合审核', desc: '汇总以上所有维度', result: null, loading: false },
 ])
 
-const resultText = {
-  consistency: '🔍 设定一致性检查\n━━━━━━━━━━━━━━━━\n✅ 角色能力符合设定: 5/5\n⚠️ 第8章灵气描写与设定有偏差\n✅ 道具体系一致: 8/8\n\n📌 建议: 修正第8章灵气浓度描述',
-  foreshadowing: '🔍 伏笔回收追踪\n━━━━━━━━━━━━━━━━\n📌 伏笔总数: 8\n✅ 已回收: 5\n⏳ 未回收: 3\n   - 玉佩来历(第1章→预计30章)\n   - 师尊身份(第5章→预计45章)\n   - 古墓秘密(第10章→预计50章)',
-  pacing: '🔍 节奏分析\n━━━━━━━━━━━━━━━━\n📊 爽点密度: 每3章1个 ✅\n📊 冲突频率: 每2章1次 ✅\n📊 高潮间隔: 每10章1次 ✅\n⚠️ 第8-10章连续无冲突,建议插入小高潮',
-  prose: '🔍 文笔评估\n━━━━━━━━━━━━━━━━\n描写: 7/10 可增加环境细节\n对话: 8/10 自然\n节奏: 8/10 紧凑\n语法: ✅ 0错别字\n📝 语感评分: 86/100',
-  continuity: '🔍 连贯性检查\n━━━━━━━━━━━━━━━━\n✅ 剧情衔接: 12/12章自然\n⚠️ 第5章时间跳跃未说明\n✅ 角色状态: 保持连贯',
-  logic: '🔍 逻辑检查\n━━━━━━━━━━━━━━━━\n✅ 因果关系: 合理\n✅ 世界观自洽: 通过\n⚠️ 第6章主角实力提升过快,建议增加修炼过程',
-  character_arc: '🔍 人物弧光分析\n━━━━━━━━━━━━━━━━\n✅ 主角成长曲线: 合理\n✅ 性格变化: 有层次\n⚠️ 女主的第8章行为与前文性格略有不符',
-  reader_perspective: '🔍 读者视角分析\n━━━━━━━━━━━━━━━━\n📊 情感共鸣度: 78/100\n📊 代入感: 82/100\n💡 建议: 第7章增加主角内心独白'
+function scoreTagType(score) {
+  if (score >= 80) return 'success'
+  if (score >= 60) return 'warning'
+  return 'error'
 }
 
-async function run(key) {
-  currentResult.value = `🔍 ${items.value.find(i=>i.key===key).label} 审核中...`
-  try {
-    const dimension = key === 'continuity' ? 'logic' : key === 'reader_perspective' ? 'reader-perspective' : key === 'character_arc' ? 'character-arc' : key
-    const res = await reviewAPI.review(pid(), dimension, { content: '待审核内容' })
-    const data = res.data
-    const text = `评分: ${data?.score || 0}/100\n\n${data?.summary || ''}\n\n问题:\n${(data?.issues || []).map(i => '- ' + i).join('\n')}\n\n建议:\n${(data?.suggestions || []).map(s => '- ' + s).join('\n')}`
-    currentResult.value = text
-  } catch {
-    currentResult.value = resultText[key] || `✅ ${items.value.find(i=>i.key===key).label} 审核完成\n综合评分: 82/100`
-  }
-  const item = items.value.find(i => i.key === key)
-  if (item) item.result = { pass: !currentResult.value.includes('⚠️'), score: '82/100' }
+function scoreColor(score) {
+  if (score >= 80) return '#10B981'
+  if (score >= 60) return '#F59E0B'
+  return '#EF4444'
 }
 
-async function runComprehensive() {
-  compLoading.value = true
-  currentResult.value = '📊 正在生成综合审校报告...'
-  try {
-    const res = await reviewAPI.checkComprehensive(pid(), '待审核内容', '')
-    const data = res.data
-    currentResult.value = `📊 综合审校报告\n━━━━━━━━━━━━━━━━\n评分: ${data?.score || 0}/100\n\n${data?.summary || ''}\n\n问题:\n${(data?.issues || []).map(i => '- ' + i).join('\n')}\n\n建议:\n${(data?.suggestions || []).map(s => '- ' + s).join('\n')}`
-  } catch {
-    currentResult.value = '📊 综合审校报告\n━━━━━━━━━━━━━━━━\n综合评分: 79/100 (B+)'
+function assertContent() {
+  if (!content.value.trim()) {
+    message.warning('请先选择章节或粘贴待审核内容')
+    return false
   }
-  compLoading.value = false
+  return true
 }
+
+async function runOne(item) {
+  if (!assertContent() || item.loading) return
+  item.loading = true
+  currentItem.value = item
+  currentResult.value = null
+  try {
+    const res = await reviewAPI.review(pid(), item.key, {
+      content: content.value,
+      context: context.value || undefined,
+    })
+    item.result = res.data
+    currentResult.value = res.data
+  } catch (e) {
+    message.error(`${item.label}审核失败: ${e.message || '未知错误'}`)
+  } finally {
+    item.loading = false
+  }
+}
+
+async function runAll() {
+  if (!assertContent() || runningAll.value) return
+  runningAll.value = true
+  message.info('开始逐维度审核，请稍候…')
+  try {
+    for (const item of items.value) {
+      item.loading = true
+      try {
+        const res = await reviewAPI.review(pid(), item.key, {
+          content: content.value,
+          context: context.value || undefined,
+        })
+        item.result = res.data
+        currentItem.value = item
+        currentResult.value = res.data
+      } catch (e) {
+        message.error(`${item.label}审核失败: ${e.message || ''}`)
+      } finally {
+        item.loading = false
+      }
+    }
+    message.success('全部维度审核完成')
+  } finally {
+    runningAll.value = false
+  }
+}
+
+async function loadChapters() {
+  loading.value = true
+  try {
+    const res = await writingAPI.getChapters(pid())
+    chapters.value = res.data?.data || res.data || []
+  } catch {
+    chapters.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadChapters)
 </script>
+
+<style scoped>
+.review-card {
+  border-radius: 14px;
+}
+
+.card-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.content-area {
+  font-family: ui-serif, Georgia, 'Songti SC', serif;
+  font-size: 14px;
+  line-height: 1.9;
+}
+
+.dim-card {
+  border-radius: 12px;
+}
+
+.dim-card.is-running {
+  border-color: rgba(108, 92, 231, 0.4);
+}
+
+.dim-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dim-icon {
+  font-size: 17px;
+}
+
+.dim-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.dim-desc {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.result-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.result-block {
+  margin-top: 10px;
+}
+
+.result-block-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.result-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: #4b5563;
+}
+
+.result-list.good li::marker {
+  color: #10b981;
+}
+
+.result-list.bad li::marker {
+  color: #ef4444;
+}
+</style>

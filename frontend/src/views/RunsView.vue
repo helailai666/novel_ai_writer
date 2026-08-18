@@ -2,12 +2,15 @@
   <n-spin :show="loading">
     <div class="page-header">
       <div class="page-title">
-        <h2>🕐 运行记录</h2>
-        <n-text depth="3">LangGraph 各图运行审计 · 事件时间线可视化（G4）</n-text>
+        <div class="page-title-icon">⚡</div>
+        <div>
+          <h2>运行记录</h2>
+          <n-text depth="3">LangGraph 各图运行审计 · 事件时间线可视化</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-select v-model:value="graphFilter" :options="graphOptions" placeholder="全部图" clearable style="width:140px" @update:value="loadRuns" />
-        <n-select v-model:value="statusFilter" :options="statusOptions" placeholder="全部状态" clearable style="width:140px" @update:value="loadRuns" />
+      <div class="page-actions">
+        <n-select v-model:value="graphFilter" :options="graphOptions" placeholder="全部图" clearable style="width:130px" @update:value="loadRuns" />
+        <n-select v-model:value="statusFilter" :options="statusOptions" placeholder="全部状态" clearable style="width:130px" @update:value="loadRuns" />
         <n-space align="center" class="auto-refresh">
           <n-switch v-model:value="autoRefresh" size="small" />
           <n-text depth="3" style="font-size:12px">自动刷新{{ pollHint }}</n-text>
@@ -20,7 +23,7 @@
           <template #icon><n-icon><TrashOutline /></n-icon></template>
           清空记录
         </n-button>
-      </n-space>
+      </div>
     </div>
 
     <n-card size="small" :bordered="false">
@@ -326,11 +329,12 @@ async function removeRun(r) {
 async function retryRun(r) {
   try {
     const res = await agentsAPI.retryRun(r.id)
-    if (res.retried) {
-      message.success(`已重试（${res.graph}），生成新运行记录`)
+    const data = res.data || {}
+    if (data.retried) {
+      message.success(`已重试（${data.graph}），生成新运行记录`)
       await loadRuns()
     } else {
-      message.error(res.error || '重试失败')
+      message.error(data.error || '重试失败')
     }
   } catch (e) {
     message.error(e.message || '重试失败')
@@ -361,7 +365,7 @@ async function clearAllRuns() {
   margin-bottom: 16px;
 }
 .page-title h2 {
-  margin: 0 0 4px;
+  margin: 0 0 3px;
 }
 .stats-bar {
   margin-bottom: 4px;

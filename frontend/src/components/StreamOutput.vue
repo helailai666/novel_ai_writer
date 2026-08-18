@@ -372,7 +372,7 @@ function handleSSEData(data) {
         status.value = 'done'
         progressPercent.value = 100
         displayText.value = fullText.value
-        emit('done', { content: fullText.value, result: data.result, run_id: data.run_id })
+        emit('done', { content: fullText.value, result: data.result, run_id: data.run_id, tokens: { ...tokenStats.value } })
         break
       case 'error':
         throw new Error(data.message || '生成错误')
@@ -388,7 +388,7 @@ function handleSSEData(data) {
     status.value = 'done'
     progressPercent.value = 100
     displayText.value = fullText.value
-    emit('done', { content: fullText.value, tokens: tokenStats.value })
+    emit('done', { content: fullText.value, tokens: { ...tokenStats.value } })
     return
   }
 

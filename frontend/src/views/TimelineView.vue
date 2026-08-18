@@ -1,20 +1,24 @@
 <template>
   <n-spin :show="loading">
+    <!-- 页面标题 -->
     <div class="page-header">
       <div class="page-title">
-        <h2>🕐 时间线</h2>
-        <n-text depth="3">管理小说世界的时间事件脉络</n-text>
+        <div class="page-title-icon">🕐</div>
+        <div>
+          <h2>时间线</h2>
+          <n-text depth="3">管理小说世界的时间事件脉络</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-button @click="openCreate" type="primary">
-          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
-          新增事件
-        </n-button>
+      <div class="page-actions">
         <n-button @click="aiModal = true" :loading="aiLoading">
           <template #icon><n-icon><SparklesOutline /></n-icon></template>
           AI 生成事件
         </n-button>
-      </n-space>
+        <n-button type="primary" @click="openCreate">
+          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
+          新增事件
+        </n-button>
+      </div>
     </div>
 
     <!-- 时代筛选 -->
@@ -147,7 +151,8 @@ function countByEra(era) {
 async function load() {
   loading.value = true
   try {
-    timelines.value = await settingsAPI.getTimelines(pid.value)
+    const res = await settingsAPI.getTimelines(pid.value)
+    timelines.value = res.data?.data || res.data || []
   } catch (e) {
     message.error(e.message || '加载失败')
   } finally {
@@ -213,7 +218,7 @@ async function aiGenerate() {
     const r = await aiGenerateAPI.generateTimeline(pid.value, {
       name: aiForm.name, category: aiForm.category || 'present', extra: aiForm.extra,
     })
-    message.success(r.is_mock ? '已生成（Mock 模式，配置 LLM Key 后为真实内容）' : '已生成并保存')
+    message.success(r.data?.is_mock ? '已生成（Mock 模式，配置 LLM Key 后为真实内容）' : '已生成并保存')
     aiModal.value = false
     load()
   } catch (e) {
@@ -228,5 +233,6 @@ onMounted(load)
 
 <style scoped>
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-.page-title h2 { margin: 0 0 4px; }
+.page-title { display: flex; align-items: center; gap: 12px; }
+.page-title h2 { margin: 0 0 3px; }
 </style>

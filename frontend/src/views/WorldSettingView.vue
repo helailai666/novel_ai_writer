@@ -3,19 +3,22 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="page-title">
-        <h2>🌍 世界观设定</h2>
-        <n-text depth="3">构建小说的世界规则与背景</n-text>
+        <div class="page-title-icon">🌍</div>
+        <div>
+          <h2>世界观设定</h2>
+          <n-text depth="3">构建小说的世界规则与背景</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-button @click="showDrawer = true" type="primary">
-          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
-          新建条目
-        </n-button>
+      <div class="page-actions">
         <n-button @click="aiGenerate" :loading="aiLoading">
           <template #icon><n-icon><SparklesOutline /></n-icon></template>
           AI 生成
         </n-button>
-      </n-space>
+        <n-button type="primary" @click="showDrawer = true">
+          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
+          新建条目
+        </n-button>
+      </div>
     </div>
 
     <!-- 分类标签 -->
@@ -360,15 +363,18 @@ async function confirmAiGenerate() {
   align-items: flex-start;
   margin-bottom: 8px;
 }
-.page-header h2 { margin: 0 0 4px 0; }
+.page-title { display: flex; align-items: center; gap: 12px; }
+.page-header h2 { margin: 0 0 3px 0; }
 
 .world-card {
   cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  border-radius: 12px;
 }
 .world-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+  border-color: rgba(108, 92, 231, 0.3);
 }
 
 @media (max-width: 768px) {

@@ -6,7 +6,7 @@
     <n-layout-header
       bordered
       class="top-header"
-      :style="{ height: '52px' }"
+      :style="{ height: '56px' }"
     >
       <div class="header-left">
         <!-- 移动端菜单按钮 -->
@@ -22,8 +22,10 @@
 
         <!-- Logo -->
         <div class="logo" @click="$router.push('/projects')">
-          <span class="logo-icon">📝</span>
-          <span class="logo-text">NovelAI Writer</span>
+          <div class="logo-mark">
+            <n-icon :size="20"><CreateOutline /></n-icon>
+          </div>
+          <span class="logo-text">NovelAI<span class="logo-accent">Writer</span></span>
         </div>
 
         <!-- 桌面端面包屑 -->
@@ -46,9 +48,9 @@
 
       <div class="header-right">
         <!-- 折叠按钮 -->
-        <n-button text @click="collapsed = !collapsed" class="desktop-only">
+        <n-button text class="desktop-only" @click="collapsed = !collapsed">
           <template #icon>
-            <n-icon size="18">
+            <n-icon size="18" color="#9CA3AF">
               <ChevronBackOutline v-if="!collapsed" />
               <ChevronForwardOutline v-else />
             </n-icon>
@@ -60,41 +62,51 @@
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- 主体区域                                                     -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <n-layout has-sider position="absolute" style="top: 52px; bottom: 0">
+    <n-layout has-sider position="absolute" style="top: 56px; bottom: 0">
       <!-- 桌面端侧边栏 -->
       <n-layout-sider
         bordered
         class="desktop-sider"
-        content-style="padding: 8px; display: flex; flex-direction: column;"
-        :width="siderWidth"
+        content-style="padding: 10px 8px; display: flex; flex-direction: column; gap: 8px;"
+        :width="232"
         :collapsed="collapsed"
         collapse-mode="width"
+        :collapsed-width="64"
         @collapse="collapsed = true"
         @expand="collapsed = false"
       >
+        <!-- 项目信息卡 -->
+        <div v-if="route.params.id && !collapsed" class="sider-project">
+          <div class="sider-project-icon">📖</div>
+          <div class="sider-project-body">
+            <div class="sider-project-title">项目 #{{ String(route.params.id).slice(0, 8) }}</div>
+            <div class="sider-project-sub">创作工作台</div>
+          </div>
+        </div>
+
         <n-menu
           :value="activeKey"
           :collapsed="collapsed"
           :collapsed-width="64"
-          :collapsed-icon-size="22"
+          :collapsed-icon-size="20"
           :options="menuOptions"
-          :render-label="renderMenuLabel"
+          :indent="20"
           @update:value="handleMenu"
         />
 
         <!-- 侧边栏底部信息 -->
-        <div class="sider-footer" v-if="!collapsed">
-          <n-divider />
-          <n-text depth="3" style="font-size: 12px;">
-            v0.1.0 · FastAPI + LangChain
-          </n-text>
+        <div class="sider-footer">
+          <n-divider v-if="!collapsed" style="margin: 4px 0 10px" />
+          <div v-if="!collapsed" class="sider-version">
+            <span class="dot" /> v0.1.0 · FastAPI + LangGraph
+          </div>
         </div>
       </n-layout-sider>
 
       <!-- 移动端抽屉菜单 -->
       <n-drawer
         v-model:show="mobileMenuOpen"
-        :width="240"
+        :width="248"
         placement="left"
         :trap-focus="false"
       >
@@ -109,7 +121,7 @@
 
       <!-- 内容区 -->
       <n-layout
-        content-style="padding: 20px; overflow-y: auto;"
+        content-style="padding: 24px 28px 40px; overflow-y: auto;"
         class="content-area"
       >
         <router-view />
@@ -135,6 +147,7 @@ import {
   MenuOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
+  CreateOutline,
   FolderOutline,
   AddCircleOutline,
   DocumentTextOutline,
@@ -151,6 +164,7 @@ import {
   RibbonOutline,
   ChatbubblesOutline,
   FlagOutline,
+  PulseOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -181,7 +195,7 @@ onUnmounted(() => {
 })
 
 // ── 侧边栏宽度 ──────────────────────────────────────────────────
-const siderWidth = computed(() => (isMobile.value ? 0 : 220))
+const siderWidth = computed(() => (isMobile.value ? 0 : 232))
 
 // ── 当前激活菜单项 ──────────────────────────────────────────────
 const activeKey = computed(() => {
@@ -203,19 +217,22 @@ const breadcrumbs = computed(() => {
         label: `📖 项目 #${paths[1]}`,
         path: `/projects/${paths[1]}`,
       })
-      if (paths[2] === 'settings') items.push({ label: '⚙️ 设定' })
-      else if (paths[2] === 'review') items.push({ label: '🔍 审核' })
-      else if (paths[2] === 'characters') items.push({ label: '🎭 角色' })
-      else if (paths[2] === 'world') items.push({ label: '🌍 世界观' })
-      else if (paths[2] === 'factions') items.push({ label: '🏛️ 势力' })
-      else if (paths[2] === 'outline') items.push({ label: '📜 大纲' })
-      else if (paths[2] === 'dashboard') items.push({ label: '📊 仪表盘' })
-      else if (paths[2] === 'knowledge') items.push({ label: '📚 知识库' })
-      else if (paths[2] === 'memes') items.push({ label: '😂 热梗库' })
-      else if (paths[2] === 'chat') items.push({ label: '💬 AI 对话' })
-      else if (paths[2] === 'timeline') items.push({ label: '🕐 时间线' })
-      else if (paths[2] === 'foreshadows') items.push({ label: '🎯 伏笔管理' })
-      else if (paths[2] === 'runs') items.push({ label: '🕐 运行记录' })
+      const map = {
+        settings: '⚙️ 设定',
+        review: '🔍 审核',
+        characters: '🎭 角色',
+        world: '🌍 世界观',
+        factions: '🏛️ 势力',
+        outline: '📜 大纲',
+        dashboard: '📊 仪表盘',
+        knowledge: '📚 知识库',
+        memes: '😂 热梗库',
+        chat: '💬 AI 对话',
+        timeline: '🕐 时间线',
+        foreshadows: '🎯 伏笔管理',
+        runs: '⚡ 运行记录',
+      }
+      if (map[paths[2]]) items.push({ label: map[paths[2]] })
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
     }
@@ -265,6 +282,31 @@ const projectMenuOptions = computed(() => {
       icon: renderIcon(SettingsOutline),
     },
     {
+      label: '项目仪表盘',
+      key: `/projects/${id}/dashboard`,
+      icon: renderIcon(StatsChartOutline),
+    },
+    {
+      label: '大纲编辑器',
+      key: `/projects/${id}/outline`,
+      icon: renderIcon(ListOutline),
+    },
+    {
+      label: '角色管理',
+      key: `/projects/${id}/characters`,
+      icon: renderIcon(PeopleOutline),
+    },
+    {
+      label: '世界观设定',
+      key: `/projects/${id}/world`,
+      icon: renderIcon(GlobeOutline),
+    },
+    {
+      label: '势力管理',
+      key: `/projects/${id}/factions`,
+      icon: renderIcon(BusinessOutline),
+    },
+    {
       label: '时间线',
       key: `/projects/${id}/timeline`,
       icon: renderIcon(TimeOutline),
@@ -279,46 +321,21 @@ const projectMenuOptions = computed(() => {
       key: `/projects/${id}/review`,
       icon: renderIcon(SearchOutline),
     },
-  {
-  label: '角色管理',
-  key: `/projects/${id}/characters`,
-  icon: renderIcon(PeopleOutline),
-  },
-  {
-  label: '世界观设定',
-  key: `/projects/${id}/world`,
-  icon: renderIcon(GlobeOutline),
-  },
-  {
-  label: '势力管理',
-  key: `/projects/${id}/factions`,
-  icon: renderIcon(BusinessOutline),
-  },
-  {
-  label: '大纲编辑器',
-  key: `/projects/${id}/outline`,
-  icon: renderIcon(ListOutline),
-  },
-  {
-  label: '项目仪表盘',
-  key: `/projects/${id}/dashboard`,
-  icon: renderIcon(StatsChartOutline),
-  },
-  {
-  label: '知识库',
-  key: `/projects/${id}/knowledge`,
-  icon: renderIcon(BookOutline),
-  },
-  {
-  label: '热梗库',
-  key: `/projects/${id}/memes`,
-  icon: renderIcon(HappyOutline),
-  },
-  {
-  label: '运行记录',
-  key: `/projects/${id}/runs`,
-  icon: renderIcon(TimeOutline),
-  },
+    {
+      label: '知识库',
+      key: `/projects/${id}/knowledge`,
+      icon: renderIcon(BookOutline),
+    },
+    {
+      label: '热梗库',
+      key: `/projects/${id}/memes`,
+      icon: renderIcon(HappyOutline),
+    },
+    {
+      label: '运行记录',
+      key: `/projects/${id}/runs`,
+      icon: renderIcon(PulseOutline),
+    },
   ]
 })
 
@@ -348,12 +365,6 @@ function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
 
-/** 自定义菜单标签渲染 */
-function renderMenuLabel(option) {
-  if (option.type === 'divider') return option.label || ''
-  return option.label
-}
-
 // ── 导航处理 ────────────────────────────────────────────────────
 function handleMenu(key) {
   router.push(key)
@@ -371,16 +382,17 @@ function handleMobileMenu(key) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding: 0 20px;
+  background: linear-gradient(120deg, #171c26 0%, #1f2636 55%, #232a3d 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   z-index: 100;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  min-width: 0;
 }
 
 .header-right {
@@ -392,60 +404,128 @@ function handleMobileMenu(key) {
 .logo {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
 }
 
-.logo-icon {
-  font-size: 22px;
+.logo-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(135deg, #6c5ce7 0%, #8b5cf6 100%);
+  box-shadow: 0 3px 8px rgba(108, 92, 231, 0.35);
 }
 
 .logo-text {
-  color: #e94560;
+  color: #f3f4f6;
   font-weight: 700;
-  font-size: 17px;
+  font-size: 16px;
   letter-spacing: 0.3px;
+}
+
+.logo-accent {
+  color: #a78bfa;
+  margin-left: 4px;
 }
 
 /* 面包屑 */
 .desktop-breadcrumb {
   display: flex;
+  margin-left: 6px;
+  padding-left: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .breadcrumb-link {
   color: #9ca3af;
   text-decoration: none;
+  font-size: 13px;
   transition: color 0.2s;
 }
 .breadcrumb-link:hover {
-  color: #e94560;
+  color: #a78bfa;
 }
 
 .breadcrumb-current {
-  color: #f3f4f6;
+  color: #e5e7eb;
+  font-size: 13px;
 }
 
 /* 移动端菜单按钮 */
 .mobile-menu-btn {
   display: none;
+  color: #d1d5db;
 }
 
 /* ── 侧边栏 ──────────────────────────────────────────────────── */
 .desktop-sider {
   transition: width 0.3s ease;
+  background: #fbfaf8;
+}
+
+.sider-project {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 2px 4px 6px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(108, 92, 231, 0.10), rgba(245, 158, 11, 0.06));
+  border: 1px solid rgba(108, 92, 231, 0.14);
+}
+
+.sider-project-icon {
+  font-size: 20px;
+}
+
+.sider-project-body {
+  min-width: 0;
+}
+
+.sider-project-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d2129;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sider-project-sub {
+  font-size: 11px;
+  color: #8a8f98;
 }
 
 .sider-footer {
   margin-top: auto;
-  padding: 8px;
-  text-align: center;
+  padding: 0 8px 4px;
+}
+
+.sider-version {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.sider-version .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
 }
 
 /* ── 内容区 ──────────────────────────────────────────────────── */
 .content-area {
-  background: #f5f5f5;
+  background: #f7f6f3;
 }
 
 /* ── 响应式 ──────────────────────────────────────────────────── */
@@ -467,7 +547,7 @@ function handleMobileMenu(key) {
   }
 
   .logo-text {
-    font-size: 15px;
+    font-size: 14px;
   }
 }
 

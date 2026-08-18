@@ -2,15 +2,18 @@
   <n-spin :show="loading">
     <div class="page-header">
       <div class="page-title">
-        <h2>🎯 伏笔管理</h2>
-        <n-text depth="3">跟踪埋设与回收，避免烂尾伏笔</n-text>
+        <div class="page-title-icon">🎯</div>
+        <div>
+          <h2>伏笔管理</h2>
+          <n-text depth="3">跟踪埋设与回收，避免烂尾伏笔</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-button @click="openCreate" type="primary">
+      <div class="page-actions">
+        <n-button type="primary" @click="openCreate">
           <template #icon><n-icon><AddCircleOutline /></n-icon></template>
           新增伏笔
         </n-button>
-      </n-space>
+      </div>
     </div>
 
     <!-- 状态筛选 -->
@@ -150,8 +153,10 @@ const columns = [
 async function load() {
   loading.value = true
   try {
-    foreshadows.value = await settingsAPI.getForeshadows(pid.value)
-    chapters.value = (await writingAPI.getChapters(pid.value)) || []
+    const fsRes = await settingsAPI.getForeshadows(pid.value)
+    foreshadows.value = fsRes.data?.data || fsRes.data || []
+    const chRes = await writingAPI.getChapters(pid.value)
+    chapters.value = chRes.data?.data || chRes.data || []
   } catch (e) {
     message.error(e.message || '加载失败')
   } finally {
@@ -226,5 +231,6 @@ onMounted(load)
 
 <style scoped>
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-.page-title h2 { margin: 0 0 4px; }
+.page-title { display: flex; align-items: center; gap: 12px; }
+.page-title h2 { margin: 0 0 3px; }
 </style>

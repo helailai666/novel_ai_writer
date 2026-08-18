@@ -2,8 +2,11 @@
   <div class="settings-page">
     <div class="page-header">
       <div class="page-title">
-        <h2>⚙️ 全局设置</h2>
-        <n-text depth="3">模型供应商 · 搜索模式 · 技能包 · MCP</n-text>
+        <div class="page-title-icon">⚙️</div>
+        <div>
+          <h2>全局设置</h2>
+          <n-text depth="3">模型供应商 · 搜索模式 · 技能包 · MCP</n-text>
+        </div>
       </div>
     </div>
 
@@ -275,6 +278,7 @@ async function loadRuntimeConfig() {
 <style scoped>
 .settings-page { max-width: 1200px; margin: 0 auto; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-.page-header h2 { margin: 0 0 4px 0; }
+.page-title { display: flex; align-items: center; gap: 12px; }
+.page-header h2 { margin: 0 0 3px 0; }
 .cache-card { background: #fafafa; border: 1px solid #f0f0f0; }
 </style>

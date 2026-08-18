@@ -2,19 +2,22 @@
   <n-spin :show="loading">
     <div class="page-header">
       <div class="page-title">
-        <h2>🎯 技能包</h2>
-        <n-text depth="3">全局技能包管理 · 文件 CRUD（skills/&lt;name&gt;/SKILL.md，H4）</n-text>
+        <div class="page-title-icon">🎯</div>
+        <div>
+          <h2>技能包</h2>
+          <n-text depth="3">全局技能包管理 · 文件 CRUD（skills/&lt;name&gt;/SKILL.md）</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-button type="primary" @click="openCreate">
-          <template #icon><n-icon><AddOutline /></n-icon></template>
-          新建技能
-        </n-button>
+      <div class="page-actions">
         <n-button @click="load">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
         </n-button>
-      </n-space>
+        <n-button type="primary" @click="openCreate">
+          <template #icon><n-icon><AddOutline /></n-icon></template>
+          新建技能
+        </n-button>
+      </div>
     </div>
 
     <n-card size="small" :bordered="false">
@@ -236,7 +239,12 @@ async function remove(s) {
   gap: 12px;
   margin-bottom: 16px;
 }
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 .page-title h2 {
-  margin: 0 0 4px;
+  margin: 0 0 3px;
 }
 </style>

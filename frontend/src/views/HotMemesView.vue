@@ -2,16 +2,19 @@
   <n-spin :show="loading">
     <div class="page-header">
       <div class="page-title">
-        <h2>😂 热梗库</h2>
-        <n-text depth="3">网络流行语 · 供写作自然融入对话与场景</n-text>
+        <div class="page-title-icon">😂</div>
+        <div>
+          <h2>热梗库</h2>
+          <n-text depth="3">网络流行语 · 供写作自然融入对话与场景</n-text>
+        </div>
       </div>
-      <n-space>
+      <div class="page-actions">
         <n-input v-model:value="keyword" placeholder="搜索热梗…" clearable style="width:200px" @update:value="loadMemes" />
-        <n-button @click="openCreate" type="primary">
+        <n-button type="primary" @click="openCreate">
           <template #icon><n-icon><AddCircleOutline /></n-icon></template>
           新增热梗
         </n-button>
-      </n-space>
+      </div>
     </div>
 
     <n-grid :cols="4" :x-gap="12" :y-gap="12" responsive="screen" item-responsive>
@@ -160,6 +163,7 @@ async function removeMeme(m) {
   align-items: flex-start;
   margin-bottom: 16px;
 }
-.page-header h2 { margin: 0 0 4px 0; }
-.meme-card { height: 100%; }
+.page-title { display: flex; align-items: center; gap: 12px; }
+.page-header h2 { margin: 0 0 3px 0; }
+.meme-card { height: 100%; border-radius: 12px; }
 </style>

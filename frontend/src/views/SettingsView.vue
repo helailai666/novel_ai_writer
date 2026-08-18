@@ -1,22 +1,32 @@
 <template>
-  <n-page-header @back="$router.back()">
-    <template #title>🌍 设定管理</template>
-    <template #extra>
-      <n-button type="warning" :loading="auditLoading" @click="runAudit">🩺 全项目体检</n-button>
-    </template>
-  </n-page-header>
+  <n-spin :show="false">
+    <div class="page-header">
+      <div class="page-title">
+        <div class="page-title-icon">⚙️</div>
+        <div>
+          <h2>模块设定</h2>
+          <n-text depth="3">世界观 / 角色 / 道具 / 技能 / 势力 / 大纲 / 伏笔 全模块管理</n-text>
+        </div>
+      </div>
+      <div class="page-actions">
+        <n-button type="warning" secondary :loading="auditLoading" @click="runAudit">
+          <template #icon><n-icon><MedkitOutline /></n-icon></template>
+          全项目体检
+        </n-button>
+      </div>
+    </div>
 
-  <!-- 项目级技能包 -->
-  <n-card title="🎯 项目技能包（写作/设定生成时自动注入）" size="small" style="margin-top:16px">
-    <n-space vertical>
-      <n-checkbox-group v-model:value="projectSkills" @update:value="saveSkills">
-        <n-space>
-          <n-checkbox v-for="s in skillList" :key="s.name" :value="s.name" :label="`${s.name}（${s.description}）`" />
-        </n-space>
-      </n-checkbox-group>
-      <n-text depth="3" style="font-size:12px">技能将注入生成时的 system prompt 并合并工具白名单；请求级 skills 字段优先。</n-text>
-    </n-space>
-  </n-card>
+    <!-- 项目级技能包 -->
+    <n-card title="🎯 项目技能包（写作/设定生成时自动注入）" size="small" style="margin-top:4px; border-radius:12px">
+      <n-space vertical>
+        <n-checkbox-group v-model:value="projectSkills" @update:value="saveSkills">
+          <n-space>
+            <n-checkbox v-for="s in skillList" :key="s.name" :value="s.name" :label="`${s.name}（${s.description}）`" />
+          </n-space>
+        </n-checkbox-group>
+        <n-text depth="3" style="font-size:12px">技能将注入生成时的 system prompt 并合并工具白名单；请求级 skills 字段优先。</n-text>
+      </n-space>
+    </n-card>
 
   <n-tabs type="line" default-value="world" style="margin-top:20px;">    <n-tab-pane name="world" tab="🌍 世界观">
       <n-card>
@@ -133,12 +143,14 @@
       </template>
     </n-spin>
   </n-modal>
+  </n-spin>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
+import { MedkitOutline } from '@vicons/ionicons5'
 import { settingsAPI, aiGenerateAPI, projectAPI, skillsAPI } from '../api/index.js'
 
 const route = useRoute()
@@ -160,7 +172,7 @@ async function loadSkills() {
 
 async function saveSkills() {
   try {
-    await projectAPI.updateProject(pid(), { skills: projectSkills.value.join(',') })
+    await projectAPI.updateProject(pid(), { skill_packs: projectSkills.value.join(',') })
     message.success('项目技能已保存')
   } catch (e) {
     message.error(e.message || '保存失败')
@@ -248,3 +260,14 @@ onMounted(() => {
   loadSkills()
 })
 </script>
+
+<style scoped>
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.page-title h2 {
+  margin: 0 0 3px;
+}
+</style>

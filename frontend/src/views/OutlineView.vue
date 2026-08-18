@@ -2,19 +2,22 @@
   <n-spin :show="loading">
     <div class="page-header">
       <div class="page-title">
-        <h2>📜 大纲编辑器</h2>
-        <n-text depth="3">规划章节结构与剧情走向</n-text>
+        <div class="page-title-icon">📜</div>
+        <div>
+          <h2>大纲编辑器</h2>
+          <n-text depth="3">规划章节结构与剧情走向</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-button @click="openCreate" type="primary">
-          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
-          新建节点
-        </n-button>
+      <div class="page-actions">
         <n-button @click="aiGenerateOutline" :loading="aiLoading">
           <template #icon><n-icon><SparklesOutline /></n-icon></template>
           AI 生成大纲
         </n-button>
-      </n-space>
+        <n-button type="primary" @click="openCreate">
+          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
+          新建节点
+        </n-button>
+      </div>
     </div>
 
     <!-- 统计栏 -->
@@ -183,7 +186,8 @@ async function aiGenerateOutline() {
 
 <style scoped>
 .page-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
-.page-header h2 { margin:0 0 4px 0; }
+.page-title { display: flex; align-items: center; gap: 12px; }
+.page-header h2 { margin:0 0 3px 0; }
 @media (max-width:768px) { .page-header { flex-direction:column; gap:12px; } }
 :deep(.n-tree-node-content) { min-height:36px; }
 </style>

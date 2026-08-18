@@ -2,19 +2,22 @@
   <n-spin :show="loading">
     <div class="page-header">
       <div class="page-title">
-        <h2>📚 知识库</h2>
-        <n-text depth="3">文档资料 · 设定参考 · 全局/项目知识（混合检索）</n-text>
+        <div class="page-title-icon">📚</div>
+        <div>
+          <h2>知识库</h2>
+          <n-text depth="3">文档资料 · 设定参考 · 全局/项目知识（混合检索）</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-button @click="openSearch = true" type="info" ghost>
+      <div class="page-actions">
+        <n-button secondary @click="openSearch = true">
           <template #icon><n-icon><SearchOutline /></n-icon></template>
           检索
         </n-button>
-        <n-button @click="openCreate" type="primary">
+        <n-button type="primary" @click="openCreate">
           <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
           导入知识
         </n-button>
-      </n-space>
+      </div>
     </div>
 
     <!-- 文档列表 -->
@@ -43,11 +46,11 @@
         >
           <template #header>
             <n-space align="center" justify="space-between" style="width:100%">
-              <b>{{ d.title }}</b>
-              <n-tag size="tiny" type="info">{{ d.category }}</n-tag>
+              <b>{{ d.title || d.phrase }}</b>
+              <n-tag size="tiny" type="info">{{ d.category || (d.phrase ? '热梗' : '') }}</n-tag>
             </n-space>
           </template>
-          <n-text depth="2">{{ d.content }}</n-text>
+          <n-text depth="2">{{ d.content || d.meaning }}</n-text>
           <template v-if="d.phrase" #footer>
             <n-text depth="3">热梗：{{ d.phrase }} — {{ d.meaning }}</n-text>
           </template>
@@ -86,13 +89,14 @@
 <script setup>
 import { ref, reactive, computed, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { useMessage, useDialog, NTag, NButton, NIcon } from 'naive-ui'
 import { SearchOutline, CloudUploadOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
 import { knowledgeAPI } from '../api/index.js'
 
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const dialog = useDialog()
 const projectId = computed(() => route.params.id)
 
 const loading = ref(false)
@@ -109,14 +113,21 @@ const pagination = { pageSize: 20 }
 
 const columns = [
   { title: '标题', key: 'title', ellipsis: { tooltip: true } },
-  { title: '类别', key: 'category', width: 120, render: (r) => h('n-tag', { size: 'tiny', type: 'info' }, { default: () => r.category }) },
-  { title: '来源', key: 'source', width: 140 },
-  { title: '更新时间', key: 'updated_at', width: 180 },
   {
-    title: '操作', key: 'actions', width: 140,
-    render: (r) => h('span', [
-      h('n-button', { size: 'tiny', quaternary: true, onClick: () => openEdit(r) }, { icon: () => h('n-icon', null, { default: () => h(CreateOutline) }) }),
-      h('n-button', { size: 'tiny', quaternary: true, type: 'error', onClick: () => removeDoc(r) }, { icon: () => h('n-icon', null, { default: () => h(TrashOutline) }) }),
+    title: '类别', key: 'category', width: 120,
+    render: (r) => h(NTag, { size: 'tiny', type: 'info', bordered: false, round: true }, { default: () => r.category }),
+  },
+  { title: '来源', key: 'source', width: 140 },
+  { title: '更新时间', key: 'updated_at', width: 180, render: (r) => h('span', { style: 'font-size:12px;color:#888' }, String(r.updated_at || '').slice(0, 19).replace('T', ' ')) },
+  {
+    title: '操作', key: 'actions', width: 110,
+    render: (r) => h('span', { style: 'display:flex;gap:4px' }, [
+      h(NButton, { size: 'tiny', quaternary: true, onClick: () => openEdit(r) }, {
+        icon: () => h(NIcon, { size: 14 }, { default: () => h(CreateOutline) }),
+      }),
+      h(NButton, { size: 'tiny', quaternary: true, type: 'error', onClick: () => removeDoc(r) }, {
+        icon: () => h(NIcon, { size: 14 }, { default: () => h(TrashOutline) }),
+      }),
     ]),
   },
 ]
@@ -195,15 +206,21 @@ async function handleUpload({ file }) {
 }
 
 async function removeDoc(row) {
-  const ok = await window.confirm(`确认删除「${row.title}」？`)
-  if (!ok) return
-  try {
-    await knowledgeAPI.deleteDoc(row.id)
-    message.success('已删除')
-    loadDocs()
-  } catch (e) {
-    message.error(e.message || '删除失败')
-  }
+  dialog.warning({
+    title: '删除文档',
+    content: `确认删除「${row.title}」？对应的向量索引也会被清除。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await knowledgeAPI.deleteDoc(row.id)
+        message.success('已删除')
+        loadDocs()
+      } catch (e) {
+        message.error(e.message || '删除失败')
+      }
+    },
+  })
 }
 </script>
 
@@ -214,5 +231,6 @@ async function removeDoc(row) {
   align-items: flex-start;
   margin-bottom: 16px;
 }
-.page-header h2 { margin: 0 0 4px 0; }
+.page-title { display: flex; align-items: center; gap: 12px; }
+.page-header h2 { margin: 0 0 3px 0; }
 </style>

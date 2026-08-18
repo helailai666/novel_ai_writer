@@ -2,19 +2,22 @@
   <n-spin :show="loading">
     <div class="page-header">
       <div class="page-title">
-        <h2>🏛️ 势力管理</h2>
-        <n-text depth="3">管理阵营、门派、家族等势力组织</n-text>
+        <div class="page-title-icon">🏛️</div>
+        <div>
+          <h2>势力管理</h2>
+          <n-text depth="3">管理阵营、门派、家族等势力组织</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-button @click="openCreate" type="primary">
-          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
-          新建势力
-        </n-button>
+      <div class="page-actions">
         <n-button @click="aiGenerate" :loading="aiLoading">
           <template #icon><n-icon><SparklesOutline /></n-icon></template>
           AI 生成
         </n-button>
-      </n-space>
+        <n-button type="primary" @click="openCreate">
+          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
+          新建势力
+        </n-button>
+      </div>
     </div>
 
     <!-- 势力网格 -->
@@ -190,8 +193,9 @@ async function confirmAi() {
 
 <style scoped>
 .page-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
-.page-header h2 { margin:0 0 4px 0; }
-.faction-card { cursor:pointer; transition:transform .2s,box-shadow .2s; }
-.faction-card:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,.1); }
+.page-title { display: flex; align-items: center; gap: 12px; }
+.page-header h2 { margin:0 0 3px 0; }
+.faction-card { cursor:pointer; transition:transform .2s,box-shadow .2s,border-color .2s; border-radius: 12px; }
+.faction-card:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(0,0,0,.08); border-color: rgba(108,92,231,.3); }
 @media (max-width:768px) { .page-header { flex-direction:column; gap:12px; } }
 </style>

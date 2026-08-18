@@ -34,7 +34,9 @@ http.interceptors.response.use(
 // ─── 项目 API ────────────────────────────────────────
 export const projectAPI = {
   getProjects(params) {
-    return http.get('/projects', { params })
+    // 必须带尾斜杠：后端只注册了 /api/projects/，不带斜杠会触发 307 重定向
+    // 到绝对地址 http://localhost:18000/api/projects/，产生跨域请求并可能被 CORS 拦截
+    return http.get('/projects/', { params })
   },
   getProject(id) {
     return http.get(`/projects/${id}`)

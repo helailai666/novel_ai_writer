@@ -3,113 +3,115 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
-    redirect: '/projects'
-  },
-  {
-    path: '/projects',
-    component: () => import('@/views/ProjectList.vue'),
-    meta: { title: '项目列表' }
-  },
-  {
-    path: '/projects/:id',
     component: () => import('@/components/Layout.vue'),
-    meta: { title: '创作工作台' },
     children: [
+      { path: '', redirect: '/projects' },
       {
-        path: '',
-        name: 'ProjectDetail',
-        component: () => import('@/views/ProjectDetail.vue'),
-        meta: { title: '创作工作台' }
+        path: 'projects',
+        component: () => import('@/views/ProjectList.vue'),
+        meta: { title: '项目列表' }
+      },
+      {
+        path: 'projects/:id',
+        meta: { title: '创作工作台' },
+        children: [
+          {
+            path: '',
+            name: 'ProjectDetail',
+            component: () => import('@/views/ProjectDetail.vue'),
+            meta: { title: '创作工作台' }
+          },
+          {
+            path: 'settings',
+            name: 'ProjectSettings',
+            component: () => import('@/views/SettingsView.vue'),
+            meta: { title: '模块设定' }
+          },
+          {
+            path: 'review',
+            name: 'ProjectReview',
+            component: () => import('@/views/ReviewView.vue'),
+            meta: { title: '审核视图' }
+          },
+          {
+            path: 'characters',
+            name: 'ProjectCharacters',
+            component: () => import('@/views/CharactersView.vue'),
+            meta: { title: '角色管理' }
+          },
+          {
+            path: 'world',
+            name: 'ProjectWorld',
+            component: () => import('@/views/WorldSettingView.vue'),
+            meta: { title: '世界观设定' }
+          },
+          {
+            path: 'factions',
+            name: 'ProjectFactions',
+            component: () => import('@/views/FactionsView.vue'),
+            meta: { title: '势力管理' }
+          },
+          {
+            path: 'outline',
+            name: 'ProjectOutline',
+            component: () => import('@/views/OutlineView.vue'),
+            meta: { title: '大纲编辑' }
+          },
+          {
+            path: 'dashboard',
+            name: 'ProjectDashboard',
+            component: () => import('@/views/DashboardView.vue'),
+            meta: { title: '项目仪表盘' }
+          },
+          {
+            path: 'knowledge',
+            name: 'ProjectKnowledge',
+            component: () => import('@/views/KnowledgeView.vue'),
+            meta: { title: '知识库' }
+          },
+          {
+            path: 'memes',
+            name: 'ProjectMemes',
+            component: () => import('@/views/HotMemesView.vue'),
+            meta: { title: '热梗库' }
+          },
+          {
+            path: 'chat',
+            name: 'ProjectChat',
+            component: () => import('@/views/ChatView.vue'),
+            meta: { title: 'AI 对话' }
+          },
+          {
+            path: 'timeline',
+            name: 'ProjectTimeline',
+            component: () => import('@/views/TimelineView.vue'),
+            meta: { title: '时间线' }
+          },
+          {
+            path: 'foreshadows',
+            name: 'ProjectForeshadows',
+            component: () => import('@/views/ForeshadowView.vue'),
+            meta: { title: '伏笔' }
+          },
+          {
+            path: 'runs',
+            name: 'ProjectRuns',
+            component: () => import('@/views/RunsView.vue'),
+            meta: { title: '运行记录' }
+          }
+        ]
+      },
+      {
+        path: 'skills',
+        component: () => import('@/views/SkillsView.vue'),
+        meta: { title: '技能包' }
       },
       {
         path: 'settings',
-        name: 'ProjectSettings',
-        component: () => import('@/views/SettingsView.vue'),
-        meta: { title: '模块设定' }
-      },
-      {
-        path: 'review',
-        name: 'ProjectReview',
-        component: () => import('@/views/ReviewView.vue'),
-        meta: { title: '审核视图' }
-      },
-      {
-        path: 'characters',
-        name: 'ProjectCharacters',
-        component: () => import('@/views/CharactersView.vue'),
-        meta: { title: '角色管理' }
-      },
-      {
-        path: 'world',
-        name: 'ProjectWorld',
-        component: () => import('@/views/WorldSettingView.vue'),
-        meta: { title: '世界观设定' }
-      },
-      {
-        path: 'factions',
-        name: 'ProjectFactions',
-        component: () => import('@/views/FactionsView.vue'),
-        meta: { title: '势力管理' }
-      },
-      {
-        path: 'outline',
-        name: 'ProjectOutline',
-        component: () => import('@/views/OutlineView.vue'),
-        meta: { title: '大纲编辑' }
-      },
-      {
-        path: 'dashboard',
-        name: 'ProjectDashboard',
-        component: () => import('@/views/DashboardView.vue'),
-        meta: { title: '项目仪表盘' }
-      },
-      {
-        path: 'knowledge',
-        name: 'ProjectKnowledge',
-        component: () => import('@/views/KnowledgeView.vue'),
-        meta: { title: '知识库' }
-      },
-      {
-        path: 'memes',
-        name: 'ProjectMemes',
-        component: () => import('@/views/HotMemesView.vue'),
-        meta: { title: '热梗库' }
-      },
-      {
-        path: 'chat',
-        name: 'ProjectChat',
-        component: () => import('@/views/ChatView.vue'),
-        meta: { title: 'AI 对话' }
-      },
-      {
-        path: 'timeline',
-        name: 'ProjectTimeline',
-        component: () => import('@/views/TimelineView.vue'),
-        meta: { title: '时间线' }
-      },
-      {
-        path: 'foreshadows',
-        name: 'ProjectForeshadows',
-        component: () => import('@/views/ForeshadowView.vue'),
-        meta: { title: '伏笔' }
-      },
-      {
-        path: 'runs',
-        name: 'ProjectRuns',
-        component: () => import('@/views/RunsView.vue'),
-        meta: { title: '运行记录' }
+        component: () => import('@/views/GlobalSettingsView.vue'),
+        meta: { title: '全局设置' }
       }
     ]
-  },
-  {
-    path: '/skills',
-    component: () => import('@/views/SkillsView.vue'),
-    meta: { title: '技能包' }
-  },
-  {
-    path: '/settings',
-    component: () => import('@/views/GlobalSettingsView.vue'),
-    meta: { title: '全局设置' }
   },
   {
     path: '/:pathMatch(.*)*',

@@ -3,50 +3,58 @@
     <!-- 页面标题与操作栏 -->
     <div class="page-header">
       <div class="page-title">
-        <h2>🎭 角色管理</h2>
-        <n-text depth="3">管理小说中的角色档案</n-text>
+        <div class="page-title-icon">🎭</div>
+        <div>
+          <h2>角色管理</h2>
+          <n-text depth="3">管理小说中的角色档案（name / role / gender / age / 性格 / 背景 / 外貌 / 能力 / 关系）</n-text>
+        </div>
       </div>
-      <n-space>
-        <n-button @click="showCreateDrawer = true" type="primary">
-          <template #icon><n-icon><PersonAddOutline /></n-icon></template>
-          新建角色
-        </n-button>
+      <div class="page-actions">
         <n-button @click="aiGenerateCharacters" :loading="aiLoading">
           <template #icon><n-icon><SparklesOutline /></n-icon></template>
           AI 生成角色
         </n-button>
-      </n-space>
+        <n-button type="primary" @click="openCreate">
+          <template #icon><n-icon><PersonAddOutline /></n-icon></template>
+          新建角色
+        </n-button>
+      </div>
     </div>
 
     <!-- 角色网格 -->
     <n-grid :cols="isMobile ? 1 : isTablet ? 2 : 3" :x-gap="16" :y-gap="16">
       <n-grid-item v-for="char in characters" :key="char.id">
         <n-card
-          :title="char.name"
-          hoverable
-          class="character-card"
+          class="character-card hover-card"
           @click="openEditDrawer(char)"
         >
+          <template #header>
+            <div class="char-head">
+              <div class="char-avatar">{{ char.name?.slice(0, 1) || '?' }}</div>
+              <div class="char-head-text">
+                <div class="char-name">{{ char.name }}</div>
+                <n-tag :type="roleTypeTag(char.role)" size="tiny" :bordered="false" round>
+                  {{ roleLabel(char.role) }}
+                </n-tag>
+              </div>
+            </div>
+          </template>
           <template #header-extra>
-            <n-tag :type="roleTypeTag(char.role)" size="small">
-              {{ char.role || '未设定' }}
-            </n-tag>
+            <n-tag size="tiny" :bordered="false" type="default" round>{{ genderLabel(char.gender) }}</n-tag>
           </template>
 
-          <n-descriptions :column="1" label-placement="left" size="small">
-            <n-descriptions-item label="别称">{{ char.alias || '无' }}</n-descriptions-item>
-            <n-descriptions-item label="境界">{{ char.realm || '无' }}</n-descriptions-item>
-            <n-descriptions-item label="阵营">{{ char.faction || '无' }}</n-descriptions-item>
-          </n-descriptions>
+          <div class="char-facts">
+            <span v-if="char.age" class="fact-chip">🎂 {{ char.age }} 岁</span>
+          </div>
 
-          <n-ellipsis :line-clamp="3" style="margin-top:8px; color:#666;">
-            {{ char.description || '暂无简介' }}
+          <n-ellipsis :line-clamp="4" class="char-desc">
+            {{ char.personality || char.background || '（暂无性格/背景描述）' }}
           </n-ellipsis>
 
           <template #action>
             <n-space justify="end">
               <n-button size="tiny" quaternary @click.stop="openEditDrawer(char)">编辑</n-button>
-              <n-popconfirm @positive-stop="deleteCharacter(char.id)">
+              <n-popconfirm @positive-click="deleteCharacter(char.id)">
                 <template #trigger>
                   <n-button size="tiny" quaternary type="error">删除</n-button>
                 </template>
@@ -62,9 +70,9 @@
     <n-empty v-if="!characters.length && !loading" description="暂无角色，点击上方按钮创建" style="margin-top:60px;" />
 
     <!-- ── 新建/编辑抽屉 ────────────────────────────────── -->
-    <n-drawer v-model:show="drawerVisible" :width="520" placement="right">
+    <n-drawer v-model:show="drawerVisible" :width="560" placement="right">
       <n-drawer-content
-        :title="editingChar ? '✏️ 编辑角色' : '➕ 新建角色'"
+        :title="editingChar ? `✏️ 编辑角色 · ${editingChar.name}` : '➕ 新建角色'"
         :closable="true"
       >
         <n-form
@@ -72,54 +80,27 @@
           :model="formData"
           :rules="formRules"
           label-placement="top"
+          size="small"
         >
           <n-form-item label="角色名" path="name">
             <n-input v-model:value="formData.name" placeholder="如：林玄" />
           </n-form-item>
 
-          <n-form-item label="别称/绰号">
-            <n-input v-model:value="formData.alias" placeholder="如：剑仙" />
-          </n-form-item>
-
-          <n-form-item label="角色定位">
-            <n-radio-group v-model:value="formData.role" style="flex-wrap:wrap;">
-              <n-radio value="主角">主角</n-radio>
-              <n-radio value="配角">配角</n-radio>
-              <n-radio value="反派">反派</n-radio>
-              <n-radio value="导师">导师</n-radio>
-              <n-radio value="爱人">爱人</n-radio>
-              <n-radio value="其他">其他</n-radio>
-            </n-radio-group>
-          </n-form-item>
-
-          <n-row :gutter="16">
+          <n-row :gutter="14">
             <n-col :span="12">
-              <n-form-item label="境界/实力">
-                <n-input v-model:value="formData.realm" placeholder="如：筑基期" />
+              <n-form-item label="角色定位">
+                <n-select v-model:value="formData.role" :options="roleOptions" />
               </n-form-item>
             </n-col>
             <n-col :span="12">
-              <n-form-item label="阵营">
-                <n-input v-model:value="formData.faction" placeholder="如：天剑宗" />
+              <n-form-item label="性别">
+                <n-select v-model:value="formData.gender" :options="genderOptions" />
               </n-form-item>
             </n-col>
           </n-row>
 
-          <n-form-item label="性别">
-            <n-radio-group v-model:value="formData.gender">
-              <n-radio value="男">男</n-radio>
-              <n-radio value="女">女</n-radio>
-              <n-radio value="未知">未知</n-radio>
-            </n-radio-group>
-          </n-form-item>
-
-          <n-form-item label="外貌描述">
-            <n-input
-              v-model:value="formData.appearance"
-              type="textarea"
-              :rows="2"
-              placeholder="角色的外貌特征..."
-            />
+          <n-form-item label="年龄">
+            <n-input-number v-model:value="formData.age" :min="0" style="width: 120px" />
           </n-form-item>
 
           <n-form-item label="性格特征">
@@ -140,12 +121,30 @@
             />
           </n-form-item>
 
-          <n-form-item label="简介">
+          <n-form-item label="外貌描述">
             <n-input
-              v-model:value="formData.description"
+              v-model:value="formData.appearance"
               type="textarea"
               :rows="2"
-              placeholder="一句话简介..."
+              placeholder="角色的外貌特征..."
+            />
+          </n-form-item>
+
+          <n-form-item label="能力 / 特长">
+            <n-input
+              v-model:value="formData.abilities"
+              type="textarea"
+              :rows="2"
+              placeholder="功法、技能、特长..."
+            />
+          </n-form-item>
+
+          <n-form-item label="人物关系">
+            <n-input
+              v-model:value="formData.relationships"
+              type="textarea"
+              :rows="2"
+              placeholder="与其他角色的关系..."
             />
           </n-form-item>
         </n-form>
@@ -166,13 +165,7 @@
 <script setup>
 /**
  * CharactersView.vue — 角色管理页面
- *
- * 功能：
- * - 卡片网格展示所有角色
- * - 新建/编辑角色（抽屉表单）
- * - 删除角色
- * - AI 辅助生成角色
- * - 响应式布局（手机/平板/桌面）
+ * 字段完全对齐后端 Character: name/role/gender/age/personality/background/appearance/abilities/relationships
  */
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
@@ -213,6 +206,26 @@ const drawerVisible = ref(false)
 const editingChar = ref(null)
 const formRef = ref(null)
 
+// ── 选项 ────────────────────────────────────────────────────────
+const roleOptions = [
+  { label: '主角', value: 'protagonist' },
+  { label: '配角', value: 'supporting' },
+  { label: '反派', value: 'antagonist' },
+  { label: '导师', value: 'mentor' },
+  { label: '爱人', value: 'love_interest' },
+  { label: '其他', value: 'other' },
+]
+const roleMap = Object.fromEntries(roleOptions.map((o) => [o.value, o.label]))
+function roleLabel(r) { return roleMap[r] || r || '未设定' }
+
+const genderOptions = [
+  { label: '男', value: 'male' },
+  { label: '女', value: 'female' },
+  { label: '未知', value: 'unknown' },
+]
+const genderMap = Object.fromEntries(genderOptions.map((o) => [o.value, o.label]))
+function genderLabel(g) { return genderMap[g] || g || '未知' }
+
 // ── 表单 ────────────────────────────────────────────────────────
 const initForm = () => ({
   name: '',
@@ -235,11 +248,12 @@ const formRules = {
 // ── 角色类型标签颜色 ────────────────────────────────────────────
 function roleTypeTag(role) {
   const map = {
-    '主角': 'success',
-    '反派': 'error',
-    '导师': 'warning',
-    '爱人': 'info',
-    '配角': 'default',
+    protagonist: 'success',
+    antagonist: 'error',
+    mentor: 'warning',
+    love_interest: 'info',
+    supporting: 'default',
+    other: 'default',
   }
   return map[role] || 'default'
 }
@@ -276,9 +290,10 @@ function openEditDrawer(char) {
   drawerVisible.value = true
 }
 
-function resetForm() {
+function openCreate() {
   editingChar.value = null
   formData.value = initForm()
+  drawerVisible.value = true
 }
 
 // ── 保存角色 ────────────────────────────────────────────────────
@@ -300,7 +315,6 @@ async function saveCharacter() {
       message.success('角色已创建')
     }
     drawerVisible.value = false
-    resetForm()
     await loadCharacters()
   } catch (e) {
     message.error('保存失败: ' + (e.message || '未知错误'))
@@ -328,6 +342,7 @@ async function aiGenerateCharacters() {
     await aiGenerateAPI.generateCharacter(pid(), {
       name: '新角色',
       role: 'supporting',
+      category: 'general',
       extra: '请生成一个有深度的角色设定',
     })
     message.success('AI 角色生成完成！')
@@ -341,31 +356,61 @@ async function aiGenerateCharacters() {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-}
-
-.page-header h2 {
-  margin: 0 0 4px 0;
-}
-
 .character-card {
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 14px;
 }
 
-.character-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+.char-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-@media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    gap: 12px;
-  }
+.char-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #6c5ce7, #8b5cf6);
+  flex-shrink: 0;
+}
+
+.char-head-text {
+  min-width: 0;
+}
+
+.char-name {
+  font-weight: 700;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.char-facts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.fact-chip {
+  font-size: 11px;
+  color: #6b7280;
+  background: #f4f3ff;
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.char-desc {
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.7;
+  min-height: 64px;
 }
 </style>

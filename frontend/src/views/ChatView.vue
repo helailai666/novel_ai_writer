@@ -2,12 +2,15 @@
   <div class="chat-page">
     <div class="page-header">
       <div class="page-title">
-        <h2>💬 AI 对话</h2>
-        <n-text depth="3">自由文本 → LLM 意图路由（设定 / 写作 / 审核 / 知识问答）· 流式输出（K 轮）</n-text>
+        <div class="page-title-icon">💬</div>
+        <div>
+          <h2>AI 对话</h2>
+          <n-text depth="3">自由文本 → LLM 意图路由（设定 / 写作 / 审核 / 知识问答）· 流式输出</n-text>
+        </div>
       </div>
-      <n-space>
+      <div class="page-actions">
         <n-button size="small" quaternary @click="clearChat">清空对话</n-button>
-      </n-space>
+      </div>
     </div>
 
     <n-card class="chat-card" :bordered="false">
@@ -16,23 +19,23 @@
           <div style="min-height: 200px"></div>
         </n-spin>
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
-          <div class="avatar">{{ m.role === 'user' ? '🧑' : '🤖' }}</div>
-          <div class="bubble">
+          <div class="avatar" :class="m.role">{{ m.role === 'user' ? '🧑' : '🤖' }}</div>
+          <div class="bubble" :class="m.role">
             <div v-if="m.role === 'assistant' && m.route" class="meta-line">
-              <n-tag size="tiny" :type="routeType(m.route.intent)">{{ routeLabel(m.route.intent) }}</n-tag>
-              <n-tag size="tiny" type="default">{{ m.route.method === 'llm' ? 'LLM 分类' : '关键词' }}</n-tag>
-              <n-tag v-if="m.saved" size="tiny" type="success">已保存</n-tag>
+              <n-tag size="tiny" :type="routeType(m.route.intent)" :bordered="false" round>{{ routeLabel(m.route.intent) }}</n-tag>
+              <n-tag size="tiny" type="default" :bordered="false" round>{{ m.route.method === 'llm' ? 'LLM 分类' : '关键词' }}</n-tag>
+              <n-tag v-if="m.saved" size="tiny" type="success" :bordered="false" round>已保存</n-tag>
               <n-text v-if="m.retrieve !== undefined" depth="3" style="font-size:12px">检索到 {{ m.retrieve }} 条资料</n-text>
             </div>
             <div class="text" v-html="renderText(m.content)" />
             <div v-if="m.tools.length" class="tool-chips">
-              <n-tag v-for="(t, j) in m.tools" :key="j" size="tiny" type="warning">🔧 {{ t }}</n-tag>
+              <n-tag v-for="(t, j) in m.tools" :key="j" size="tiny" type="warning" :bordered="false" round>🔧 {{ t }}</n-tag>
             </div>
             <div v-if="m.sources.length" class="sources">
               <n-collapse>
                 <n-collapse-item title="📎 参考来源" name="src">
                   <div v-for="(s, j) in m.sources" :key="j" class="source-item">
-                    <n-tag size="tiny" :type="sourceType(s.type)">{{ s.type }}</n-tag>
+                    <n-tag size="tiny" :type="sourceType(s.type)" :bordered="false" round>{{ s.type }}</n-tag>
                     <b>{{ s.title }}</b>
                     <span>{{ s.content }}</span>
                     <a v-if="s.url" :href="s.url" target="_blank" rel="noreferrer">🔗</a>
@@ -73,9 +76,9 @@
 
 <script setup>
 /**
- * ChatView.vue — AI 对话面板（K 轮创建，L 轮增强）
+ * ChatView.vue — AI 对话面板
  * 消费 /api/agents/chat SSE：路由徽标 + 流式打字机 + 工具 chips + 来源折叠
- * L 轮：多轮上下文（history 注入）、历史服务端重建加载、停止/重试、localStorage 迁移兜底
+ * 历史由 /api/agents/chat/history 服务端重建（r.data.turns），清空走 runs 清理端点
  */
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
@@ -124,7 +127,8 @@ async function clearChat() {
   try { localStorage.removeItem(storageKey.value) } catch (e) { /* 忽略 */ }
   try {
     const r = await agentsAPI.clearRuns({ project_id: projectId.value, graph: 'chat' })
-    if (r.deleted !== undefined) message.success(`已清空对话（删除 ${r.deleted} 条运行记录）`)
+    const deleted = r.data?.deleted
+    if (deleted !== undefined) message.success(`已清空对话（删除 ${deleted} 条运行记录）`)
   } catch (e) {
     messages.value = last // 服务端清理失败则回滚本地
     message.error(e.message || '清空失败')
@@ -135,7 +139,7 @@ async function loadHistory() {
   loadingHistory.value = true
   try {
     const r = await agentsAPI.chatHistory({ project_id: projectId.value })
-    const turns = r.turns || []
+    const turns = r.data?.turns || []
     if (turns.length) {
       messages.value = turns.map((t) => ({
         role: t.role,
@@ -292,17 +296,51 @@ onMounted(loadHistory)
 
 <style scoped>
 .chat-page { max-width: 1000px; margin: 0 auto; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-.page-title h2 { margin: 0 0 4px; }
-.chat-card { background: #fff; }
-.msg-list { height: calc(100vh - 320px); min-height: 360px; overflow-y: auto; padding: 4px 8px; }
-.msg { display: flex; gap: 10px; margin-bottom: 14px; }
-.msg.user { flex-direction: row-reverse; }
-.avatar { width: 34px; height: 34px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-.bubble {
-  max-width: 78%; padding: 10px 14px; border-radius: 12px; background: #f6f8fa; font-size: 14px; line-height: 1.7;
+.chat-card {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(28, 24, 55, 0.05);
 }
-.msg.user .bubble { background: #e94560; color: #fff; }
+.msg-list {
+  height: calc(100vh - 340px);
+  min-height: 380px;
+  overflow-y: auto;
+  padding: 12px 10px;
+}
+.msg { display: flex; gap: 10px; margin-bottom: 16px; }
+.msg.user { flex-direction: row-reverse; }
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(28, 24, 55, 0.08);
+}
+.avatar.user { background: linear-gradient(135deg, #ffd89b, #f59e0b); }
+.avatar.assistant { background: linear-gradient(135deg, #a78bfa, #6c5ce7); }
+
+.bubble {
+  max-width: 78%;
+  padding: 11px 16px;
+  border-radius: 14px;
+  background: #f6f7fb;
+  font-size: 14px;
+  line-height: 1.75;
+  border: 1px solid #eeeef4;
+}
+.msg.user .bubble {
+  background: linear-gradient(135deg, #6c5ce7, #7c6cf0);
+  color: #fff;
+  border: none;
+  border-bottom-right-radius: 4px;
+}
+.msg.assistant .bubble { border-bottom-left-radius: 4px; }
+
 .meta-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
 .text { white-space: normal; word-break: break-word; }
 .tool-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
