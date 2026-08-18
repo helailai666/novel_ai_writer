@@ -16,6 +16,7 @@ from app.agents import events
 from app.agents.nodes.common import messages
 from app.agents.state import NovelState
 from app.config import settings
+from app.core.cache import TTLCache
 from app.core.llm import LLMRequest, create
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,14 @@ _CLASSIFY_SYSTEM = """你是小说创作平台的意图分类器。根据用户�
 只输出 JSON：{"intent": "review|setting|chapter", "kind": "world|character|item|skill|faction|location|outline|null"}。
 kind 仅在 intent=setting 时填写，其余为 null。"""
 
+# 分类结果缓存（H1 成本门控）：相同任务文本免重复 LLM 调用
+_classify_cache = TTLCache(ttl=settings.agent.llm_supervisor_cache_ttl, max_entries=512)
+
+
+def _classify_key(task: str) -> str:
+    """归一化任务文本作为缓存 key（折叠空白）"""
+    return " ".join((task or "").split())
+
 
 def classify(task: str) -> tuple[str, dict]:
     """关键词分类（确定性回退）→ (intent, 补丁字段)
@@ -60,7 +69,19 @@ def classify(task: str) -> tuple[str, dict]:
 
 
 async def classify_with_llm(task: str) -> Optional[tuple[str, dict]]:
-    """LLM 意图分类 — 返回 (intent, patch)；失败/非法结果返回 None（调用方回退）"""
+    """LLM 意图分类 — 返回 (intent, patch)；失败/非法结果返回 None（调用方回退）
+
+    H1 成本门控：结果按归一化任务文本缓存（TTL 内相同任务直接命中，
+    不再发起 LLM 调用）；仅缓存成功分类，失败不缓存（允许重试）。
+    """
+    key = _classify_key(task)
+    use_cache = settings.agent.llm_supervisor_cache
+    if use_cache:
+        _classify_cache.ttl = settings.agent.llm_supervisor_cache_ttl
+        hit = _classify_cache.get(key)
+        if hit is not None:
+            logger.debug(f"意图分类缓存命中: {key[:60]}")
+            return hit
     try:
         llm = create()
         resp = await llm.acomplete(
@@ -75,7 +96,10 @@ async def classify_with_llm(task: str) -> Optional[tuple[str, dict]]:
             kind = str(data.get("kind") or "").strip().lower()
             if kind in _VALID_KINDS:
                 patch["kind"] = kind
-        return intent, patch
+        result = (intent, patch)
+        if use_cache:
+            _classify_cache.set(key, result)
+        return result
     except Exception as e:
         logger.debug(f"LLM 意图分类失败，回退关键词: {e}")
         return None

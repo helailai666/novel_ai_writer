@@ -1,4 +1,4 @@
-"""Skills 测试 — 加载 / 注入 / supervisor 对话路由"""
+"""Skills 测试 — 加载 / 注入 / supervisor 对话路由 / 技能包管理"""
 
 import json
 
@@ -6,6 +6,17 @@ import pytest
 
 from app.core.llm.schemas import LLMRequest, LLMResponse
 from app.core.llm.providers.mock import MockProvider
+
+
+@pytest.fixture
+def client():
+    """TestClient（mock 模式，临时 DB）"""
+    from fastapi.testclient import TestClient
+
+    import app.main as m
+
+    with TestClient(m.app) as c:
+        yield c
 
 
 def test_skill_registry_loads_builtin():
@@ -309,3 +320,99 @@ async def test_supervisor_keyword_when_llm_disabled(monkeypatch, db):
     events = await _collect_chat_events(_chat_state("写第一章", db), monkeypatch, llm)
     route = [e for e in events if e["type"] == "route"][0]
     assert route["intent"] == "chapter" and route["method"] == "keyword"
+
+
+# ── H4 技能包管理 ──────────────────────────────────────────────────
+
+def test_skill_manager_create_update_toggle_delete(tmp_path):
+    """SkillManager 文件 CRUD：创建→更新→禁用→启用→删除"""
+    from app.core.skills import SkillRegistry
+    from app.core.skills.manager import SkillError, SkillManager
+
+    mgr = SkillManager(dirs=[str(tmp_path)])
+    skill = mgr.create({
+        "name": "my-skill", "description": "测试技能", "prompt": "正文片段",
+        "tools": ["web_search"], "knowledge_refs": ["world"],
+    })
+    assert skill.name == "my-skill" and skill.prompt == "正文片段"
+    assert skill.tools == ["web_search"] and skill.knowledge_refs == ["world"]
+    assert (tmp_path / "my-skill" / "SKILL.md").exists()
+
+    # 更新 prompt + 禁用
+    skill = mgr.update("my-skill", {"prompt": "新正文", "enabled": False})
+    assert skill.prompt == "新正文" and skill.enabled is False
+
+    # 独立注册表能看到 frontmatter enabled 状态
+    reg = SkillRegistry(dirs=[str(tmp_path)])
+    assert "my-skill" not in reg.list_names(), "禁用技能不应出现在可用列表"
+
+    # 重新启用
+    skill = mgr.set_enabled("my-skill", True)
+    assert skill.enabled is True
+
+    # 删除
+    mgr.delete("my-skill")
+    assert not (tmp_path / "my-skill").exists()
+    with pytest.raises(SkillError):
+        mgr.update("my-skill", {"prompt": "x"})
+
+
+def test_skill_manager_name_validation(tmp_path):
+    """非法技能名拒绝（路径穿越/中文/空/超长）"""
+    from app.core.skills.manager import SkillError, SkillManager
+
+    mgr = SkillManager(dirs=[str(tmp_path)])
+    for bad in ("../evil", "有中文", "", "a" * 65):
+        with pytest.raises(SkillError):
+            mgr.create({"name": bad, "prompt": "x"})
+
+
+def test_skill_manager_create_duplicate_raises(tmp_path):
+    from app.core.skills.manager import SkillError, SkillManager
+
+    mgr = SkillManager(dirs=[str(tmp_path)])
+    mgr.create({"name": "dup", "prompt": "x"})
+    with pytest.raises(SkillError):
+        mgr.create({"name": "dup", "prompt": "y"})
+
+
+def test_skills_crud_api(client, tmp_path, monkeypatch):
+    """Skills API CRUD：创建/列表/详情/更新/404/非法名 400/删除"""
+    from app.core.skills import SkillRegistry
+    from app.core.skills.manager import SkillManager
+    import app.api.skills as skills_api
+
+    reg = SkillRegistry(dirs=[str(tmp_path)])
+    mgr = SkillManager(dirs=[str(tmp_path)], registry=reg)
+    monkeypatch.setattr(skills_api, "get_registry", lambda: reg)
+    monkeypatch.setattr(skills_api, "get_manager", lambda: mgr)
+
+    # 创建
+    r = client.post("/api/skills", json={"name": "api-skill", "description": "d", "prompt": "p", "tools": ["web_search"]})
+    assert r.status_code == 201
+    assert r.json()["name"] == "api-skill" and r.json()["prompt"] == "p"
+
+    # 列表可见
+    r = client.get("/api/skills")
+    assert any(s["name"] == "api-skill" for s in r.json()["skills"])
+
+    # 详情
+    r = client.get("/api/skills/api-skill")
+    assert r.status_code == 200 and r.json()["description"] == "d"
+
+    # 更新 prompt + 禁用
+    r = client.put("/api/skills/api-skill", json={"prompt": "p2", "enabled": False})
+    assert r.status_code == 200
+    assert r.json()["prompt"] == "p2" and r.json()["enabled"] is False
+
+    # 404：不存在的技能
+    assert client.get("/api/skills/no-such").status_code == 404
+    assert client.put("/api/skills/no-such", json={"prompt": "x"}).status_code == 404
+    assert client.delete("/api/skills/no-such").status_code == 404
+
+    # 400：非法技能名
+    assert client.post("/api/skills", json={"name": "坏名字"}).status_code == 400
+
+    # 删除
+    assert client.delete("/api/skills/api-skill").status_code == 200
+    assert client.get("/api/skills/api-skill").status_code == 404

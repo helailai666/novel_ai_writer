@@ -59,4 +59,5 @@ def parse_skill_md(path: Path) -> Optional[Skill]:
         tools=list(meta.get("tools") or []),
         knowledge_refs=list(meta.get("knowledge_refs") or []),
         path=str(path),
+        enabled=bool(meta.get("enabled", True)),
     )

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.knowledge import KnowledgeIndexer, Retriever, create_embeddings, create_vector_store
+from app.core.knowledge.retriever import invalidate_knowledge_cache
 from app.models.hot_meme import HotMeme
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_doc import KnowledgeDoc
@@ -64,6 +65,7 @@ class KnowledgeService:
         await db.flush()
         await db.refresh(doc)
         await db.commit()
+        invalidate_knowledge_cache()
         # 异步索引（向量化入库）
         try:
             await _get_indexer().index_doc(
@@ -103,6 +105,7 @@ class KnowledgeService:
             logger.warning(f"删除向量失败: {e}")
         await db.delete(doc)
         await db.commit()
+        invalidate_knowledge_cache()
 
     @staticmethod
     async def ingest_text(db: AsyncSession, title: str, content: str, category: str = "general", tags: str = "", project_id: Optional[str] = None, source: str = "text") -> dict:
@@ -135,6 +138,7 @@ class KnowledgeService:
         await db.flush()
         await db.refresh(meme)
         await db.commit()
+        invalidate_knowledge_cache()
         return _meme_to_dict(meme)
 
     @staticmethod
@@ -155,6 +159,7 @@ class KnowledgeService:
             raise HTTPException(status_code=404, detail="HotMeme not found")
         await db.delete(meme)
         await db.commit()
+        invalidate_knowledge_cache()
 
     @staticmethod
     async def search_memes(db: AsyncSession, query: str, project_id: Optional[str] = None, limit: int = 10) -> list[dict]:

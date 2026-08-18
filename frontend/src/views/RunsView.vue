@@ -8,6 +8,10 @@
       <n-space>
         <n-select v-model:value="graphFilter" :options="graphOptions" placeholder="全部图" clearable style="width:140px" @update:value="loadRuns" />
         <n-select v-model:value="statusFilter" :options="statusOptions" placeholder="全部状态" clearable style="width:140px" @update:value="loadRuns" />
+        <n-space align="center" class="auto-refresh">
+          <n-switch v-model:value="autoRefresh" size="small" />
+          <n-text depth="3" style="font-size:12px">自动刷新{{ pollHint }}</n-text>
+        </n-space>
         <n-button @click="loadRuns">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
@@ -98,9 +102,9 @@
  * RunsView.vue — 运行记录（G4）
  * 列表 + 过滤 + 详情抽屉（节点耗时 / token 统计 / 事件时间线 / 输入输出）
  */
-import { ref, computed, h, onMounted } from 'vue'
+import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useMessage, NTag, NButton, NIcon } from 'naive-ui'
+import { useMessage, NTag, NButton, NIcon, NSwitch } from 'naive-ui'
 import { RefreshOutline, EyeOutline } from '@vicons/ionicons5'
 import { agentsAPI } from '../api/index.js'
 
@@ -113,9 +117,49 @@ const runs = ref([])
 const graphFilter = ref(null)
 const statusFilter = ref(null)
 
+// ── H2 自动刷新：有 running 运行时每 5s 轮询（列表 + 打开中的详情）──
+const POLL_MS = 5000
+const autoRefresh = ref(true)
+let pollTimer = null
+
+const hasRunning = computed(() => runs.value.some((r) => r.status === 'running'))
+const pollHint = computed(() => {
+  if (!autoRefresh.value) return '（关）'
+  if (hasRunning.value) return ` · ${POLL_MS / 1000}s`
+  return '（无运行中）'
+})
+
+function shouldPoll() {
+  return autoRefresh.value && (hasRunning.value || (showDetail.value && detail.value.status === 'running'))
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    await loadRuns(true)
+    if (showDetail.value && detail.value.status === 'running') {
+      await openDetail({ id: detail.value.id, graph_name: detail.value.graph_name }, true)
+    }
+  }, POLL_MS)
+}
+
 const showDetail = ref(false)
 const detailLoading = ref(false)
 const detail = ref({})
+
+// 依赖 showDetail/detail —— 必须在声明之后注册 watch
+watch([autoRefresh, hasRunning, showDetail], () => {
+  if (shouldPoll()) startPolling()
+  else stopPolling()
+})
+onUnmounted(stopPolling)
 
 const graphOptions = [
   { label: 'chat 对话', value: 'chat' },
@@ -226,8 +270,8 @@ const columns = [
 
 onMounted(loadRuns)
 
-async function loadRuns() {
-  loading.value = true
+async function loadRuns(silent = false) {
+  if (!silent) loading.value = true
   try {
     const params = { project_id: projectId.value, limit: 100 }
     if (graphFilter.value) params.graph = graphFilter.value
@@ -241,10 +285,9 @@ async function loadRuns() {
   }
 }
 
-async function openDetail(r) {
+async function openDetail(r, silent = false) {
   showDetail.value = true
-  detailLoading.value = true
-  detail.value = {}
+  if (!silent) detailLoading.value = true
   try {
     const res = await agentsAPI.getRun(r.id)
     detail.value = res.data
@@ -275,6 +318,9 @@ async function openDetail(r) {
   font-size: 12px;
   color: #888;
   margin: 12px 0 6px;
+}
+.auto-refresh {
+  white-space: nowrap;
 }
 .timeline {
   border-left: 2px solid #e5e7eb;

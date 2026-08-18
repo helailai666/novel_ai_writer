@@ -77,6 +77,10 @@ class AgentSettings(BaseModel):
     streaming: bool = True
     persist_runs: bool = True       # 是否写入 agent_runs 表
     llm_supervisor: bool = True     # chat 图意图分类：True=LLM 优先（失败回退关键词）
+    llm_supervisor_cache: bool = True   # 意图分类结果缓存（相同任务免重复 LLM 调用）
+    llm_supervisor_cache_ttl: int = 300 # 分类缓存秒数
+    knowledge_cache: bool = True        # 知识检索结果缓存（同查询免重复混合检索）
+    knowledge_cache_ttl: int = 300      # 检索缓存秒数
 
 
 # ── 顶层 Settings（扁平环境变量） ──────────────────────────────────
@@ -140,6 +144,12 @@ class Settings(BaseSettings):
     AGENT_STREAMING: bool = True
     AGENT_PERSIST_RUNS: bool = True
     AGENT_LLM_SUPERVISOR: bool = True
+    AGENT_LLM_SUPERVISOR_CACHE: bool = True
+    AGENT_LLM_SUPERVISOR_CACHE_TTL: int = 300
+
+    # ── 知识检索缓存 ──────────────────────────────────────────────
+    KNOWLEDGE_CACHE_ENABLED: bool = True
+    KNOWLEDGE_CACHE_TTL: int = 300
 
     # ── MCP ───────────────────────────────────────────────────────
     MCP_ENABLED: bool = True
@@ -196,6 +206,10 @@ class Settings(BaseSettings):
             streaming=self.AGENT_STREAMING,
             persist_runs=self.AGENT_PERSIST_RUNS,
             llm_supervisor=self.AGENT_LLM_SUPERVISOR,
+            llm_supervisor_cache=self.AGENT_LLM_SUPERVISOR_CACHE,
+            llm_supervisor_cache_ttl=self.AGENT_LLM_SUPERVISOR_CACHE_TTL,
+            knowledge_cache=self.KNOWLEDGE_CACHE_ENABLED,
+            knowledge_cache_ttl=self.KNOWLEDGE_CACHE_TTL,
         )
         if self.DEBUG:
             self.LOG_LEVEL = "DEBUG"

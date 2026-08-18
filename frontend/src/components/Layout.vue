@@ -148,6 +148,7 @@ import {
   StatsChartOutline,
   HappyOutline,
   TimeOutline,
+  RibbonOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -213,6 +214,10 @@ const breadcrumbs = computed(() => {
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
     }
+  } else if (paths[0] === 'skills') {
+    items.push({ label: '🎯 技能包' })
+  } else if (paths[0] === 'settings') {
+    items.push({ label: '⚙️ 全局设置' })
   }
   return items
 })
@@ -300,6 +305,11 @@ const projectMenuOptions = computed(() => {
 /** 底部菜单 */
 const bottomMenuOptions = [
   { type: 'divider', key: 'div-2' },
+  {
+    label: '技能包',
+    key: '/skills',
+    icon: renderIcon(RibbonOutline),
+  },
   {
     label: '全局设置',
     key: '/settings',

@@ -30,6 +30,11 @@ class SkillRegistry:
                     self._skills[skill.name] = skill
                     logger.info(f"Skill 加载: {skill.name} ({skill.version})")
 
+    def reload(self) -> None:
+        """重新扫描目录（管理端 CRUD 后调用，使运行中的图立即感知）"""
+        self._skills.clear()
+        self._scan()
+
     # ── 查询 ────────────────────────────────────────────────────
 
     def get(self, name: str) -> Optional[Skill]:

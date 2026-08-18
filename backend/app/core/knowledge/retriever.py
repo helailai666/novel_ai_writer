@@ -1,10 +1,18 @@
-"""知识检索器 — 混合检索（关键词 ILIKE ∪ 向量 TopK，去重后按分排序）"""
+"""知识检索器 — 混合检索（关键词 ILIKE ∪ 向量 TopK，去重后按分排序）
 
+H3 增强：检索结果按 (query, project_id, top_k, categories, include_memes)
+缓存（TTL，默认 300s）；知识库/热梗写操作经 invalidate_knowledge_cache()
+主动失效。缓存值返回时深拷贝，防止调用方篡改污染缓存。
+"""
+
+import copy
 import logging
 from typing import Optional
 
 from sqlalchemy import or_, select
 
+from app.config import settings
+from app.core.cache import TTLCache
 from app.core.knowledge.embeddings import MockEmbeddings
 from app.core.knowledge.vector_stores import MockVectorStore
 from app.database import async_session_factory
@@ -16,6 +24,14 @@ logger = logging.getLogger(__name__)
 
 _SEARCHABLE_DOC_COLS = ("title", "content", "category", "tags")
 _SEARCHABLE_MEME_COLS = ("phrase", "meaning", "usage_example", "category", "tags")
+
+_retrieve_cache = TTLCache(ttl=settings.agent.knowledge_cache_ttl, max_entries=256)
+
+
+def invalidate_knowledge_cache() -> None:
+    """知识库/热梗变更后主动失效检索缓存"""
+    _retrieve_cache.clear()
+    logger.debug("知识检索缓存已失效")
 
 
 class Retriever:
@@ -37,6 +53,13 @@ class Retriever:
         # LLM 工具调用可能把单值数组传成字符串（"worldview"）→ 归一化
         if isinstance(categories, str):
             categories = [categories]
+        key = (query, project_id, top_k, tuple(sorted(categories or [])), include_memes)
+        if settings.agent.knowledge_cache:
+            _retrieve_cache.ttl = settings.agent.knowledge_cache_ttl
+            hit = _retrieve_cache.get(key)
+            if hit is not None:
+                return hit
+
         keyword_docs = await self._keyword_docs(query, project_id, categories)
         keyword_memes = await self._keyword_memes(query, project_id) if include_memes else []
 
@@ -49,7 +72,11 @@ class Retriever:
         docs = sorted(merged.values(), key=lambda x: x.get("score", 0), reverse=True)[:top_k]
 
         source = "hybrid" if vector_docs else "keyword"
-        return {"docs": docs, "memes": keyword_memes, "source": source}
+        result = {"docs": docs, "memes": keyword_memes, "source": source}
+        if settings.agent.knowledge_cache:
+            _retrieve_cache.set(key, result)
+        # 未命中路径也返回深拷贝：防止调用方修改直接污染缓存内对象
+        return copy.deepcopy(result)
 
     # ── 关键词检索（SQL ILIKE，多词 OR）──────────────────────────
 

@@ -383,6 +383,18 @@ export const skillsAPI = {
   },
   apply(name) {
     return http.post(`/skills/${name}/apply`)
+  },
+  create(data) {
+    return http.post('/skills', data)
+  },
+  update(name, data) {
+    return http.put(`/skills/${name}`, data)
+  },
+  remove(name) {
+    return http.delete(`/skills/${name}`)
+  },
+  setEnabled(name, enabled) {
+    return http.patch(`/skills/${name}/enabled`, { enabled })
   }
 }
 

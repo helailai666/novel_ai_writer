@@ -84,6 +84,11 @@ const routes = [
     ]
   },
   {
+    path: '/skills',
+    component: () => import('@/views/SkillsView.vue'),
+    meta: { title: '技能包' }
+  },
+  {
     path: '/settings',
     component: () => import('@/views/GlobalSettingsView.vue'),
     meta: { title: '全局设置' }
