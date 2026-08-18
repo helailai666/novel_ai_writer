@@ -2,22 +2,27 @@
 
 from typing import Optional
 
-from app.core.llm import LLMMessage, LLMProvider, create, create_for
+from app.core.llm import LLMMessage, LLMProvider, create, create_for, create_from_spec
 from app.core.llm.providers.mock import MockProvider
 from app.agents.state import NovelState
 
 
 def resolve_llm(state: NovelState, **kwargs) -> LLMProvider:
-    """按 state 解析 LLM 实例
+    """按 state 解析 LLM 实例（优先级从高到低）：
 
-    state["model"] 支持 "provider:model" 或 "model"（用全局 provider）
+    1. state["model"] 支持 "provider:model" 或 "model"（请求级覆盖，用全局 provider）
+    2. state["llm_config"] 为项目级/前台配置字典（provider/model/api_key/api_base/...）
+    3. 全局默认（环境变量）
     """
     override = state.get("model") or ""
-    if ":" in override:
-        provider, _, model = override.partition(":")
-        return create_for(provider, model or None, **kwargs)
     if override:
+        if ":" in override:
+            provider, _, model = override.partition(":")
+            return create_for(provider, model or None, **kwargs)
         return create(model=override, **kwargs)
+    cfg = state.get("llm_config") or {}
+    if cfg:
+        return create_from_spec(cfg, **kwargs)
     return create(**kwargs)
 
 

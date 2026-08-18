@@ -2,7 +2,7 @@
 
 from app.core.llm.base import LLMProvider
 from app.core.llm.schemas import LLMMessage, LLMRequest, LLMResponse, ToolCall
-from app.core.llm.factory import create, create_for, list_providers, get_env_key
+from app.core.llm.factory import create, create_for, create_from_spec, list_providers, get_env_key
 
 __all__ = [
     "LLMProvider",
@@ -12,6 +12,7 @@ __all__ = [
     "ToolCall",
     "create",
     "create_for",
+    "create_from_spec",
     "list_providers",
     "get_env_key",
 ]

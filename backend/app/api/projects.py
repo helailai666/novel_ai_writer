@@ -25,6 +25,8 @@ class ProjectCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     genre: str = Field(default="fantasy", max_length=50)
     synopsis: str = Field(default="", max_length=2000)
+    llm_provider_id: Optional[str] = Field(None, max_length=36, description="使用的模型供应商配置（model_providers.id，空=默认）")
+    llm_model: Optional[str] = Field(None, max_length=100, description="本项目模型覆盖（空=用供应商默认模型）")
 
 
 class ProjectUpdate(BaseModel):
@@ -33,6 +35,8 @@ class ProjectUpdate(BaseModel):
     synopsis: Optional[str] = Field(None, max_length=2000)
     status: Optional[str] = Field(None, max_length=20)
     skill_packs: Optional[str] = Field(None, max_length=300, description="逗号分隔的技能包名")
+    llm_provider_id: Optional[str] = Field(None, max_length=36, description="使用的模型供应商配置（空=用默认）；传空字符串清除")
+    llm_model: Optional[str] = Field(None, max_length=100, description="本项目模型覆盖（空=用供应商默认模型）")
 
 
 class ProjectResponse(BaseModel):
@@ -42,6 +46,8 @@ class ProjectResponse(BaseModel):
     synopsis: str
     status: str
     skill_packs: str = ""
+    llm_provider_id: Optional[str] = None
+    llm_model: str = ""
     created_at: str
     updated_at: str
 

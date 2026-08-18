@@ -17,7 +17,7 @@ from app.agents.nodes.common import messages
 from app.agents.state import NovelState
 from app.config import settings
 from app.core.cache import TTLCache
-from app.core.llm import LLMRequest, create
+from app.core.llm import LLMRequest, create, create_from_spec
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,27 @@ def classify(task: str) -> tuple[str, dict]:
     return "chapter", {}
 
 
-async def classify_with_llm(task: str) -> Optional[tuple[str, dict]]:
+async def _classify_llm(llm_config: Optional[dict]):
+    """意图分类用模型：项目级配置 → 全局默认配置（DB）→ 环境变量兜底
+
+    与生成节点一致接入前台配置体系，避免设置过模型仍打"无 Key 降级"日志。
+    """
+    if llm_config:
+        return create_from_spec(llm_config)
+    try:
+        from app.database import async_session_factory
+        from app.services.model_provider_service import get_default, to_spec
+
+        async with async_session_factory() as db:
+            row = await get_default(db)
+            if row is not None:
+                return create_from_spec(to_spec(row))
+    except Exception:
+        pass
+    return create()
+
+
+async def classify_with_llm(task: str, llm_config: Optional[dict] = None) -> Optional[tuple[str, dict]]:
     """LLM 意图分类 — 返回 (intent, patch)；失败/非法结果返回 None（调用方回退）
 
     H1 成本门控：结果按归一化任务文本缓存（TTL 内相同任务直接命中，
@@ -93,7 +113,7 @@ async def classify_with_llm(task: str) -> Optional[tuple[str, dict]]:
             logger.debug(f"意图分类缓存命中: {key[:60]}")
             return hit
     try:
-        llm = create()
+        llm = await _classify_llm(llm_config)
         resp = await llm.acomplete(
             LLMRequest(messages=messages(_CLASSIFY_SYSTEM, task), response_format={"type": "json_object"})
         )
@@ -121,7 +141,7 @@ async def supervisor_node(state: NovelState) -> dict:
     task = state.get("task") or ""
     intent, patch, method = None, {}, "keyword"
     if settings.agent.llm_supervisor:
-        result = await classify_with_llm(task)
+        result = await classify_with_llm(task, state.get("llm_config"))
         if result:
             intent, patch = result
             method = "llm"

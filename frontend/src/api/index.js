@@ -438,6 +438,15 @@ export const providerAPI = {
   list() {
     return http.get('/model-providers')
   },
+  create(data) {
+    return http.post('/model-providers', data)
+  },
+  update(id, data) {
+    return http.patch(`/model-providers/${id}`, data)
+  },
+  remove(id) {
+    return http.delete(`/model-providers/${id}`)
+  },
   test(data) {
     return http.post('/model-providers/test', data)
   }

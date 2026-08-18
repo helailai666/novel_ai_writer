@@ -26,6 +26,11 @@ class Project(Base):
     # 注意：勿命名为 skills，与 M4 技能 relationship 重名
     skill_packs: Mapped[str] = mapped_column(String(300), default="")
 
+    # 项目级模型配置：llm_provider_id 引用 model_providers 表；llm_model 为本项目模型覆盖
+    # （空 = 用该供应商配置的默认模型；都为空 = 全局默认/环境变量）
+    llm_provider_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
+    llm_model: Mapped[str] = mapped_column(String(100), default="")
+
     # 关联
     world_settings: Mapped[list["WorldSetting"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     characters: Mapped[list["Character"]] = relationship(back_populates="project", cascade="all, delete-orphan")

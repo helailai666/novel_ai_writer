@@ -58,6 +58,8 @@ def _to_response(p: Project) -> dict:
         "synopsis": p.synopsis,
         "status": p.status,
         "skill_packs": p.skill_packs or "",
+        "llm_provider_id": p.llm_provider_id,
+        "llm_model": p.llm_model or "",
         "created_at": p.created_at.isoformat() if p.created_at else "",
         "updated_at": p.updated_at.isoformat() if p.updated_at else "",
     }
@@ -99,6 +101,8 @@ class ProjectService:
             synopsis=proj.get("synopsis") or "",
             status=proj.get("status") or "draft",
             skill_packs=proj.get("skill_packs") or "",
+            llm_provider_id=proj.get("llm_provider_id"),
+            llm_model=proj.get("llm_model") or "",
         )
         db.add(project)
         await db.flush()

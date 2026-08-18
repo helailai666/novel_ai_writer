@@ -14,6 +14,7 @@ class NovelState(TypedDict):
     project_id: str
     task: str                                   # 用户任务描述
     model: Optional[str]                        # 供应商/模型覆盖（如 "deepseek:deepseek-chat"）
+    llm_config: Optional[dict]                  # 项目级 LLM 配置字典（前台配置解析，含 api_key/api_base）
     graph: str                                  # 图名: setting / chapter / review
 
     # ── 业务输入（按图取用） ─────────────────────────────────────

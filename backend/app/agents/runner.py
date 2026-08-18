@@ -108,12 +108,18 @@ class GraphRunner:
             from app.models.agent_run import AgentRun
             from app.database import async_session_factory
 
+            # 持久化前脱敏：llm_config 含 api_key，仅记录是否使用前台配置（key 留在 model_providers 表）
+            persisted = {k: v for k, v in state.items() if k != "events"}
+            cfg = persisted.get("llm_config")
+            if isinstance(cfg, dict) and cfg.get("api_key"):
+                persisted["llm_config"] = {**cfg, "api_key": "***", "has_key": True}
+
             async with async_session_factory() as db:
                 run = AgentRun(
                     graph_name=graph_name,
                     project_id=state.get("project_id"),
                     status="running",
-                    input_data=json.dumps({k: v for k, v in state.items() if k != "events"}, ensure_ascii=False, default=str),
+                    input_data=json.dumps(persisted, ensure_ascii=False, default=str),
                 )
                 db.add(run)
                 await db.flush()

@@ -124,3 +124,41 @@ def create_for(provider: str, model: str, api_key: Optional[str] = None, api_bas
         api_base=api_base,
         **kwargs,
     )
+
+
+def create_from_spec(spec: dict, **kwargs) -> LLMProvider:
+    """按配置字典创建（项目级 / 前台配置的供应商），行为对齐 create()：
+
+    - provider / model / api_key / api_base / temperature 来自 spec
+    - api_key 为空时依次回退：供应商环境变量 Key → LLM_API_KEY
+    - 仍无 Key 且非本地（ollama/mock）→ 自动降级 Mock
+    """
+    name = (spec or {}).get("provider") or settings.llm.provider or "openai"
+    cls, default_model, _ = _REGISTRY.get(name, (None, "", ""))
+    if cls is None:
+        logger.warning(f"未知供应商 '{name}'，回退 mock")
+        name = "mock"
+        cls = _REGISTRY["mock"][0]
+
+    resolved_model = (spec or {}).get("model") or settings.llm.model or default_model
+    resolved_key = _resolve_key(name, (spec or {}).get("api_key") or None)
+    if not resolved_key and name not in ("ollama", "mock"):
+        logger.warning(f"⚠️  供应商 '{name}' 无 API Key，降级到 Mock 模式")
+        return _REGISTRY["mock"][0](model=resolved_model)
+
+    api_base = (spec or {}).get("api_base") or (
+        settings.llm.api_base if name in ("openai", "deepseek", "qwen", "glm", "kimi") else None
+    )
+    temperature = (spec or {}).get("temperature")
+
+    init_kwargs = dict(kwargs)
+    if temperature is not None:
+        init_kwargs.setdefault("temperature", temperature)
+    instance = cls(
+        model=resolved_model,
+        api_key=resolved_key,
+        api_base=api_base,
+        **init_kwargs,
+    )
+    logger.info(f"✅ LLM provider: {name} / {resolved_model} / base={api_base or 'default'}")
+    return instance

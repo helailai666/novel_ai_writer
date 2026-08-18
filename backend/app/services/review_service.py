@@ -28,6 +28,7 @@ class ReviewService:
     ) -> dict:
         """按维度审核（review 图；comprehensive 为综合审核）"""
         from app.agents.runner import get_runner
+        from app.services.model_provider_service import resolve_project_config
 
         if dimension not in DIMENSIONS:
             raise HTTPException(status_code=400, detail=f"未知审核维度: {dimension}")
@@ -36,6 +37,7 @@ class ReviewService:
             "graph": "review", "project_id": project_id,
             "content": content, "context": context,
             "dimensions": [dimension],
+            "llm_config": await resolve_project_config(db, project_id),
             "settings_snapshot": {}, "knowledge": [], "draft": None,
             "review": {}, "reviews": [], "revision_round": 0,
             "max_revisions": 2, "review_threshold": 75,

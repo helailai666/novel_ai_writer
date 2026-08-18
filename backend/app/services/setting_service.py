@@ -139,10 +139,12 @@ class SettingService:
                     payload.append(f"[{module}] {title}: {str(content)[:400]}")
         if not payload:
             return {"checked": 0, "issues": [], "summary": "项目暂无设定资料"}
-        from app.core.llm import LLMMessage, LLMRequest, create
+        from app.core.llm import LLMMessage, LLMRequest, create, create_from_spec
         from app.agents.nodes.common import is_mock_provider
+        from app.services.model_provider_service import resolve_project_config
 
-        llm = create()
+        cfg = await resolve_project_config(db, project_id)
+        llm = create_from_spec(cfg) if cfg else create()
         resp = await llm.acomplete(LLMRequest(
             messages=[
                 LLMMessage(role="system", content=SettingService.AUDIT_SYSTEM),
@@ -176,46 +178,50 @@ class SettingService:
     @staticmethod
     async def ai_generate_world(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
         """AI 生成世界观设定（setting 图）"""
-        return await _run_setting_graph(project_id, "world", name, category, extra=extra)
+        return await _run_setting_graph(db, project_id, "world", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_character(db: AsyncSession, project_id: str, name: str, role: str, category: str, extra: str = "") -> dict:
-        return await _run_setting_graph(project_id, "character", name, category, role=role, extra=extra)
+        return await _run_setting_graph(db, project_id, "character", name, category, role=role, extra=extra)
 
     @staticmethod
     async def ai_generate_item(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        return await _run_setting_graph(project_id, "item", name, category, extra=extra)
+        return await _run_setting_graph(db, project_id, "item", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_skill(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        return await _run_setting_graph(project_id, "skill", name, category, extra=extra)
+        return await _run_setting_graph(db, project_id, "skill", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_faction(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        return await _run_setting_graph(project_id, "faction", name, category, extra=extra)
+        return await _run_setting_graph(db, project_id, "faction", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_location(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        return await _run_setting_graph(project_id, "location", name, category, extra=extra)
+        return await _run_setting_graph(db, project_id, "location", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_timeline(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
         """AI 生成时间线事件（M 轮）：setting 图 kind=timeline"""
-        return await _run_setting_graph(project_id, "timeline", name, category, extra=extra)
+        return await _run_setting_graph(db, project_id, "timeline", name, category, extra=extra)
 
     @staticmethod
     async def ai_generate_outline(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
-        return await _run_setting_graph(project_id, "outline", name, category, extra=extra)
+        return await _run_setting_graph(db, project_id, "outline", name, category, extra=extra)
 
 
-async def _run_setting_graph(project_id: str, kind: str, name: str, category: str, role: str = "", extra: str = "") -> dict:
+async def _run_setting_graph(db: AsyncSession, project_id: str, kind: str, name: str, category: str, role: str = "", extra: str = "") -> dict:
     """运行 setting 图并返回 {content, is_mock}（生成+持久化在图内完成）"""
     from app.agents.runner import get_runner
+    from app.services.model_provider_service import resolve_project_config
+
+    llm_config = await resolve_project_config(db, project_id)
 
     state = {
         "graph": "setting", "project_id": project_id,
         "task": f"生成{kind}设定 {name}", "kind": kind,
         "name": name, "category": category, "role": role or None, "extra": extra,
+        "llm_config": llm_config,
         "settings_snapshot": {}, "knowledge": [], "draft": None,
         "review": {}, "reviews": [], "revision_round": 0,
         "max_revisions": 2, "review_threshold": 75,

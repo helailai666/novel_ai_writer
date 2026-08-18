@@ -16,9 +16,10 @@ from app.models.agent_run import AgentRun
 from app.models.knowledge_doc import KnowledgeDoc
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.hot_meme import HotMeme
+from app.models.model_provider import ModelProvider
 
 __all__ = [
     "Project", "WorldSetting", "Character", "Skill", "Item", "Faction",
     "Outline", "Location", "Timeline", "Foreshadow", "Chapter", "Volume",
-    "AgentRun", "KnowledgeDoc", "KnowledgeChunk", "HotMeme",
+    "AgentRun", "KnowledgeDoc", "KnowledgeChunk", "HotMeme", "ModelProvider",
 ]

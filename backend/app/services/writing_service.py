@@ -148,7 +148,7 @@ class WritingService:
         """AI 生成单个章节并保存（chapter 图）"""
         from app.agents.runner import get_runner
 
-        state = _chapter_state(project_id, mode="generate", prompt=prompt, style=style,
+        state = await _chapter_state(db, project_id, mode="generate", prompt=prompt, style=style,
                                target_word_count=target_word_count, chapter_number=chapter_number, volume_id=volume_id)
         result = await get_runner().ainvoke("chapter", state)
         if result.get("error") and not result.get("saved"):
@@ -174,7 +174,7 @@ class WritingService:
         """
         from app.agents.runner import get_runner
 
-        state = _chapter_state(project_id, mode="generate", prompt=prompt, style=style,
+        state = await _chapter_state(db, project_id, mode="generate", prompt=prompt, style=style,
                                target_word_count=target_word_count, chapter_number=chapter_number, volume_id=volume_id)
         return get_runner().astream("chapter", state)
 
@@ -194,7 +194,7 @@ class WritingService:
         errors = []
         for i, prompt in enumerate(prompts):
             try:
-                state = _chapter_state(project_id, mode="generate", prompt=prompt, style=style,
+                state = await _chapter_state(db, project_id, mode="generate", prompt=prompt, style=style,
                                        target_word_count=target_word_count,
                                        chapter_number=start_chapter_number + i, volume_id=volume_id)
                 result = await get_runner().ainvoke("chapter", state)
@@ -216,7 +216,7 @@ class WritingService:
         from app.agents.runner import get_runner
 
         chapter = await _get_chapter_or_404(db, project_id, chapter_id)
-        state = _chapter_state(project_id, mode="continue", chapter_id=chapter_id,
+        state = await _chapter_state(db, project_id, mode="continue", chapter_id=chapter_id,
                                content=chapter.content, extra=direction)
         result = await get_runner().ainvoke("chapter", state)
         if result.get("error") and not result.get("saved"):
@@ -231,7 +231,7 @@ class WritingService:
         from app.agents.runner import get_runner
 
         chapter = await _get_chapter_or_404(db, project_id, chapter_id)
-        state = _chapter_state(project_id, mode="polish", chapter_id=chapter_id,
+        state = await _chapter_state(db, project_id, mode="polish", chapter_id=chapter_id,
                                content=chapter.content, style=aspect)
         result = await get_runner().ainvoke("chapter", state)
         if result.get("error") and not result.get("saved"):
@@ -242,7 +242,8 @@ class WritingService:
         return response
 
 
-def _chapter_state(
+async def _chapter_state(
+    db: AsyncSession,
     project_id: str,
     mode: str,
     prompt: str = "",
@@ -254,12 +255,15 @@ def _chapter_state(
     content: str = "",
     extra: str = "",
 ) -> dict:
-    """构造 chapter 图状态"""
+    """构造 chapter 图状态（含项目级模型配置）"""
+    from app.services.model_provider_service import resolve_project_config
+
     return {
         "graph": "chapter", "project_id": project_id, "mode": mode,
         "prompt": prompt, "style": style, "target_word_count": target_word_count,
         "chapter_number": chapter_number, "volume_id": volume_id,
         "chapter_id": chapter_id, "content": content, "extra": extra,
+        "llm_config": await resolve_project_config(db, project_id),
         "settings_snapshot": {}, "knowledge": [], "draft": None,
         "review": {}, "reviews": [], "revision_round": 0,
         "max_revisions": 2, "review_threshold": 75,

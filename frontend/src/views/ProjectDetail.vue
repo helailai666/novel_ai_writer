@@ -172,6 +172,35 @@
           </n-text>
         </n-card>
 
+        <!-- 每小说模型设置 -->
+        <n-card class="workspace-card" style="margin-top: 18px;">
+          <template #header>
+            <span class="card-title">🤖 模型设置</span>
+          </template>
+          <n-form size="small" label-placement="top">
+            <n-form-item label="模型供应商">
+              <n-select
+                v-model:value="llmProviderId"
+                :options="llmProviderOptions"
+                clearable
+                placeholder="默认（全局配置 / 环境变量）"
+              />
+            </n-form-item>
+            <n-form-item label="模型覆盖（可选）">
+              <n-input v-model:value="llmModel" placeholder="如 deepseek-chat，留空用供应商默认" />
+            </n-form-item>
+            <n-button type="primary" size="small" :loading="llmSaving" block @click="saveLlmConfig">
+              保存模型设置
+            </n-button>
+            <n-text v-if="effectiveModel" depth="3" style="font-size: 12px; display: block; margin-top: 8px">
+              本小说生效：{{ effectiveModel }}
+            </n-text>
+            <n-text depth="3" style="font-size: 12px; display: block; margin-top: 6px">
+              在「全局设置」页可新增/编辑供应商配置；每部小说可独立选择模型。
+            </n-text>
+          </n-form>
+        </n-card>
+
         <n-card class="workspace-card" style="margin-top: 18px;">
           <template #header>
             <span class="card-title">🗂️ 卷管理</span>
@@ -252,7 +281,7 @@ import {
   AddOutline,
   SaveOutline,
 } from '@vicons/ionicons5'
-import { projectAPI, writingAPI, aiAPI } from '../api/index.js'
+import { projectAPI, writingAPI, aiAPI, providerAPI } from '../api/index.js'
 import StreamOutput from '../components/StreamOutput.vue'
 
 const route = useRoute()
@@ -285,6 +314,58 @@ const saving = ref(false)
 
 const streamRef = ref(null)
 const streamSpeed = ref(25)
+
+// ── 每小说模型设置 ──────────────────────────────────────────────
+const llmProviderId = ref(null)
+const llmModel = ref('')
+const llmProviderOptions = ref([])
+const llmProviderConfigs = ref([])
+const llmGlobal = ref({ provider: '', model: '', source: 'env' })
+const llmSaving = ref(false)
+
+const effectiveModel = computed(() => {
+  if (llmProviderId.value) {
+    const cfg = llmProviderConfigs.value.find((c) => c.id === llmProviderId.value)
+    const base = cfg ? `${cfg.name}（${cfg.provider}）` : '已选配置'
+    return llmModel.value ? `${base} / ${llmModel.value}` : `${base} / ${cfg?.model || '默认模型'}`
+  }
+  return llmGlobal.value.source === 'db-default'
+    ? `全局默认（${llmGlobal.value.provider} / ${llmGlobal.value.model || '默认模型'}）`
+    : `全局默认（环境变量 ${llmGlobal.value.provider} / ${llmGlobal.value.model}）`
+})
+
+async function loadLlmOptions() {
+  try {
+    const res = await providerAPI.list()
+    const configs = (res.data.configs || []).filter((c) => c.enabled)
+    llmProviderConfigs.value = configs
+    llmGlobal.value = res.data.current || llmGlobal.value
+    llmProviderOptions.value = [
+      ...configs.map((c) => ({
+        label: `${c.name}（${c.provider}${c.model ? ' / ' + c.model : ''}）`,
+        value: c.id,
+      })),
+    ]
+  } catch {
+    /* 忽略：默认模式仍可用 */
+  }
+}
+
+async function saveLlmConfig() {
+  llmSaving.value = true
+  try {
+    await projectAPI.updateProject(pid(), {
+      llm_provider_id: llmProviderId.value || null,
+      llm_model: llmModel.value?.trim() || '',
+    })
+    message.success('模型设置已保存')
+    await load()
+  } catch (e) {
+    message.error('保存失败: ' + (e.message || '未知错误'))
+  } finally {
+    llmSaving.value = false
+  }
+}
 
 const isMobile = ref(false)
 function checkScreen() { isMobile.value = window.innerWidth < 768 }
@@ -575,6 +656,9 @@ async function load() {
     project.value = pRes.data?.data || pRes.data || {}
     chapters.value = cRes.data?.data || cRes.data || []
     volumes.value = vRes.data || []
+    llmProviderId.value = project.value.llm_provider_id || null
+    llmModel.value = project.value.llm_model || ''
+    await loadLlmOptions()
   } catch {
     project.value = { id: pid(), title: '加载失败', genre: '', synopsis: '', status: '' }
     chapters.value = []

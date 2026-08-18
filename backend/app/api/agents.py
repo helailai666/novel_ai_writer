@@ -113,10 +113,13 @@ def _run_summary(output_data: str) -> str:
 # ── 路由 ─────────────────────────────────────────────────────────
 
 @router.post("/chat")
-async def agent_chat(payload: AgentChatRequest):
-    """通用 LangGraph 流式入口 — SSE 事件流"""
+async def agent_chat(payload: AgentChatRequest, db: AsyncSession = Depends(get_db)):
+    """通用 LangGraph 流式入口 — SSE 事件流（项目级模型配置自动生效）"""
     runner = get_runner()
     state = payload.to_state()
+    from app.services.model_provider_service import resolve_project_config
+
+    state["llm_config"] = await resolve_project_config(db, payload.project_id)
 
     async def event_stream():
         try:
@@ -134,10 +137,14 @@ async def agent_chat(payload: AgentChatRequest):
 
 
 @router.post("/run")
-async def agent_run(payload: AgentChatRequest):
-    """非流式运行 — 返回 final_output JSON"""
+async def agent_run(payload: AgentChatRequest, db: AsyncSession = Depends(get_db)):
+    """非流式运行 — 返回 final_output JSON（项目级模型配置自动生效）"""
     runner = get_runner()
-    return await runner.ainvoke(payload.graph, payload.to_state())
+    state = payload.to_state()
+    from app.services.model_provider_service import resolve_project_config
+
+    state["llm_config"] = await resolve_project_config(db, payload.project_id)
+    return await runner.ainvoke(payload.graph, state)
 
 
 @router.get("/runs", response_model=list[AgentRunResponse])
@@ -316,7 +323,11 @@ async def retry_run(run_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=422, detail=f"未知图: {graph}")
     try:
         from app.agents.runner import get_runner
+        from app.services.model_provider_service import resolve_project_config
 
+        # 重跑时按项目重新解析模型配置（存储的 llm_config 已脱敏）
+        if state.get("project_id"):
+            state["llm_config"] = await resolve_project_config(db, state["project_id"])
         result = await get_runner().ainvoke(graph, state)
         return {"retried": True, "source_run_id": run_id, "graph": graph, "result": result}
     except Exception as e:

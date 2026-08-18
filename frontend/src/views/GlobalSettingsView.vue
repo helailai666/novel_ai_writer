@@ -11,35 +11,51 @@
     </div>
 
     <n-grid :cols="2" :x-gap="16" responsive="screen">
-      <!-- 模型供应商 -->
-      <n-grid-item span="2 m:1">
+      <!-- 模型供应商（前台配置，存数据库，无需改 .env） -->
+      <n-grid-item span="2">
         <n-card title="🤖 模型供应商" size="small">
-          <n-form label-placement="top">
-            <n-form-item label="当前供应商">
-              <n-select v-model:value="current.provider" :options="providerOptions" />
-            </n-form-item>
-            <n-form-item label="模型">
-              <n-input v-model:value="current.model" placeholder="如 deepseek-chat / gpt-4o-mini" />
-            </n-form-item>
-            <n-form-item label="API Base">
-              <n-input v-model:value="current.api_base" placeholder="OpenAI 兼容端点（可选）" />
-            </n-form-item>
-            <n-form-item label="API Key">
-              <n-input v-model:value="current.api_key" type="password" show-password-on="click" placeholder="留空则使用环境变量" />
-            </n-form-item>
-            <n-space>
-              <n-button type="primary" :loading="testing" @click="testProvider">测试连通</n-button>
-            </n-space>
-            <n-alert v-if="testResult" :type="testResult.ok ? 'success' : 'error'" style="margin-top:12px">
-              {{ testResult.ok ? `✅ 连通成功（${testResult.is_mock ? 'Mock 模式' : '真实 API'}）：${testResult.reply.slice(0, 60)}` : `❌ ${testResult.error}` }}
-            </n-alert>
-          </n-form>
-          <n-text depth="3" style="font-size:12px">提示：修改需写入后端 .env 后重启生效；此处用于验证连通性。可用供应商：{{ providerNames }}</n-text>
+          <template #header-extra>
+            <n-button size="small" type="primary" @click="openCreate">＋ 新增配置</n-button>
+          </template>
+
+          <n-alert type="info" :show-icon="true" style="margin-bottom:12px" closable>
+            配置保存在数据库中，前台即时生效，无需修改后端 .env 或重启。
+            解析优先级：请求级覆盖 → 项目级（每小说设置）→ 全局默认配置 → 环境变量。
+          </n-alert>
+
+          <!-- 当前生效的全局配置 -->
+          <n-descriptions size="small" :column="2" label-placement="left" bordered style="margin-bottom:12px">
+            <n-descriptions-item label="当前全局生效">
+              <n-tag size="small" :type="current.source === 'db-default' ? 'success' : 'default'">
+                {{ current.provider }} / {{ current.model || '（默认模型）' }}
+              </n-tag>
+              <n-tag v-if="current.has_api_key" size="tiny" type="success" style="margin-left:6px">有 Key</n-tag>
+              <n-text depth="3" style="font-size:12px;margin-left:8px">
+                {{ current.source === 'db-default' ? '来自前台默认配置' : '来自环境变量（未配置默认）' }}
+              </n-text>
+            </n-descriptions-item>
+          </n-descriptions>
+
+          <!-- 配置列表 -->
+          <n-data-table
+            v-if="configs.length"
+            :columns="columns"
+            :data="configs"
+            :row-key="(row) => row.id"
+            size="small"
+            :pagination="false"
+            :bordered="false"
+          />
+          <n-empty v-else description="暂无供应商配置 — 点击「新增配置」添加；未配置时回退环境变量" size="small" style="margin:16px 0" />
+
+          <n-text depth="3" style="font-size:12px;display:block;margin-top:10px">
+            可用供应商类型：{{ providerNames }}（均支持 OpenAI 兼容端点自定义）
+          </n-text>
         </n-card>
       </n-grid-item>
 
       <!-- 搜索 + MCP -->
-      <n-grid-item span="2 m:1">
+      <n-grid-item span="2">
         <n-card title="🌐 搜索模式" size="small" style="margin-bottom:16px">
           <n-space vertical>
             <n-select v-model:value="searchMode" :options="searchOptions" />
@@ -142,19 +158,71 @@
         </n-grid-item>
       </n-grid>
     </n-card>
+
+    <!-- 供应商配置抽屉（新增/编辑） -->
+    <n-drawer v-model:show="drawerShow" :width="440" placement="right">
+      <n-drawer-content :title="editingId ? '编辑供应商配置' : '新增供应商配置'" closable>
+        <n-form label-placement="top" size="small">
+          <n-form-item label="配置名称">
+            <n-input v-model:value="form.name" placeholder="如：DeepSeek 主力 / 本地 Ollama" />
+          </n-form-item>
+          <n-form-item label="供应商类型">
+            <n-select v-model:value="form.provider" :options="providerOptions" />
+          </n-form-item>
+          <n-form-item label="模型">
+            <n-input v-model:value="form.model" placeholder="如 deepseek-chat / gpt-4o-mini（留空用内置默认）" />
+          </n-form-item>
+          <n-form-item label="API Base">
+            <n-input v-model:value="form.api_base" placeholder="OpenAI 兼容端点（可选），如 https://api.deepseek.com/v1" />
+          </n-form-item>
+          <n-form-item label="API Key">
+            <n-input v-model:value="form.api_key" type="password" show-password-on="click" placeholder="留空则回退环境变量" />
+          </n-form-item>
+          <n-form-item label="Temperature">
+            <n-input-number v-model:value="form.temperature" :min="0" :max="2" :step="0.1" style="width:100%" />
+          </n-form-item>
+          <n-space align="center">
+            <n-switch v-model:value="form.enabled">
+              <template #checked>启用</template>
+              <template #unchecked>停用</template>
+            </n-switch>
+            <n-text depth="3" style="font-size:13px">设为全局默认（项目未指定时兜底）</n-text>
+            <n-switch v-model:value="form.is_default" />
+          </n-space>
+        </n-form>
+        <n-alert v-if="testResult" :type="testResult.ok ? 'success' : 'error'" style="margin:12px 0">
+          {{ testResult.ok ? `✅ 连通成功（${testResult.is_mock ? 'Mock 模式' : '真实 API'}）：${testResult.reply.slice(0, 60)}` : `❌ ${testResult.error}` }}
+        </n-alert>
+        <template #footer>
+          <n-space justify="space-between" style="width:100%">
+            <n-button :loading="testing" @click="testCurrent">测试连通</n-button>
+            <n-space>
+              <n-button @click="drawerShow = false">取消</n-button>
+              <n-button type="primary" :loading="saving" @click="saveConfig">
+                {{ editingId ? '保存修改' : '创建配置' }}
+              </n-button>
+            </n-space>
+          </n-space>
+        </template>
+      </n-drawer-content>
+    </n-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { useMessage } from 'naive-ui'
+import { ref, reactive, computed, h, onMounted } from 'vue'
+import { useMessage, useDialog, NButton, NSpace, NTag } from 'naive-ui'
 import { providerAPI, mcpAPI, skillsAPI, cacheAPI, runtimeAPI } from '../api/index.js'
 
 const message = useMessage()
-const current = reactive({ provider: 'openai', model: '', api_base: '', api_key: '' })
-const providers = ref([])
+const dialog = useDialog()
+
+const providers = ref([])          // 注册表（供应商类型）
+const configs = ref([])            // 已保存的 DB 配置
+const current = reactive({ provider: '', model: '', api_base: '', has_api_key: false, source: 'env', provider_id: null })
 const testing = ref(false)
 const testResult = ref(null)
+const saving = ref(false)
 const searchMode = ref('auto')
 const mcpServers = ref([])
 const bridgedTools = ref([])
@@ -163,6 +231,11 @@ const skills = ref([])
 const cacheStats = ref({})
 const clearing = ref(false)
 const cfg = ref({ llm: {}, search: {}, embedding: {}, vector_store: {}, mcp: {}, agent: {}, skills: {} })
+
+// 抽屉表单
+const drawerShow = ref(false)
+const editingId = ref('')
+const form = reactive({ name: '', provider: 'openai', model: '', api_base: '', api_key: '', temperature: 0.7, enabled: true, is_default: false })
 
 const providerOptions = computed(() =>
   providers.value.map((p) => ({ label: p.name, value: p.name }))
@@ -178,37 +251,132 @@ const searchOptions = [
   { label: 'mock', value: 'mock' },
 ]
 
+// 配置列表列定义
+const columns = [
+  { title: '名称', key: 'name', width: 130, render: (row) => h('div', [
+      h('b', { style: 'font-size:13px' }, row.name),
+      row.is_default ? h(NTag, { size: 'tiny', type: 'success', style: 'margin-left:6px' }, () => '默认') : null,
+    ]) },
+  { title: '类型', key: 'provider', width: 90, render: (row) => h(NTag, { size: 'tiny', type: 'info' }, () => row.provider) },
+  { title: '模型', key: 'model', render: (row) => row.model || h('span', { style: 'color:#999' }, '（内置默认）') },
+  { title: 'API Key', key: 'api_key', width: 130, render: (row) => row.has_api_key ? h('span', { style: 'font-family:monospace' }, row.api_key) : h('span', { style: 'color:#999' }, '未配置（走环境变量）') },
+  { title: '状态', key: 'enabled', width: 70, render: (row) => h(NTag, { size: 'tiny', type: row.enabled ? 'success' : 'default' }, () => row.enabled ? '启用' : '停用') },
+  {
+    title: '操作', key: 'actions', width: 200,
+    render: (row) => h(NSpace, { size: 4, justify: 'center' }, () => [
+      h(NButton, { size: 'tiny', quaternary: true, type: 'primary', onClick: () => testSaved(row) }, () => '测试'),
+      h(NButton, { size: 'tiny', quaternary: true, onClick: () => openEdit(row) }, () => '编辑'),
+      h(NButton, { size: 'tiny', quaternary: true, type: 'error', onClick: () => removeConfig(row) }, () => '删除'),
+    ])
+  },
+]
+
 onMounted(async () => {
-  try {
-    const res = await providerAPI.list()
-    providers.value = res.data.providers || []
-    Object.assign(current, res.data.current || {})
-  } catch (e) {
-    message.error(e.message || '加载供应商失败')
-  }
+  await loadProviders()
   loadMcp()
   loadSkills()
   loadCacheStats()
   loadRuntimeConfig()
 })
 
-async function testProvider() {
-  testing.value = true
-  testResult.value = null
+async function loadProviders() {
   try {
-    const res = await providerAPI.test({
-      provider: current.provider,
-      model: current.model || undefined,
-      api_key: current.api_key || undefined,
-      api_base: current.api_base || undefined,
-    })
-    testResult.value = res.data
+    const res = await providerAPI.list()
+    providers.value = res.data.providers || []
+    configs.value = res.data.configs || []
+    Object.assign(current, res.data.current || {})
   } catch (e) {
-    testResult.value = { ok: false, error: e.message }
-  } finally {
-    testing.value = false
+    message.error(e.message || '加载供应商失败')
   }
 }
+
+// ── 抽屉：新增 / 编辑 ──────────────────────────────────────────
+
+function openCreate() {
+  editingId.value = ''
+  Object.assign(form, { name: '', provider: 'openai', model: '', api_base: '', api_key: '', temperature: 0.7, enabled: true, is_default: false })
+  testResult.value = null
+  drawerShow.value = true
+}
+
+function openEdit(row) {
+  editingId.value = row.id
+  Object.assign(form, {
+    name: row.name, provider: row.provider, model: row.model,
+    api_base: row.api_base || '', api_key: '', temperature: row.temperature,
+    enabled: row.enabled, is_default: row.is_default,
+  })
+  testResult.value = null
+  drawerShow.value = true
+}
+
+async function saveConfig() {
+  if (!form.name.trim()) { message.warning('请填写配置名称'); return }
+  saving.value = true
+  try {
+    const payload = { ...form }
+    if (editingId.value) {
+      // 编辑时不回填 Key：留空表示不修改
+      if (!payload.api_key) delete payload.api_key
+      await providerAPI.update(editingId.value, payload)
+      message.success('配置已更新')
+    } else {
+      await providerAPI.create(payload)
+      message.success('配置已创建')
+    }
+    drawerShow.value = false
+    await loadProviders()
+  } catch (e) {
+    message.error(e.message || '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+function removeConfig(row) {
+  dialog.warning({
+    title: '删除供应商配置',
+    content: `确定删除「${row.name}」？引用它的项目将回退到全局默认/环境变量。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await providerAPI.remove(row.id)
+        message.success('已删除')
+        await loadProviders()
+      } catch (e) {
+        message.error(e.message || '删除失败')
+      }
+    }
+  })
+}
+
+// ── 连通性测试 ────────────────────────────────────────────────
+
+function testSaved(row) {
+  testing.value = true
+  testResult.value = null
+  providerAPI.test({ provider_id: row.id })
+    .then((res) => { testResult.value = res.data; message[res.data.ok ? 'success' : 'error'](res.data.ok ? '连通成功' : '测试失败') })
+    .catch((e) => { testResult.value = { ok: false, error: e.message } })
+    .finally(() => { testing.value = false })
+}
+
+function testCurrent() {
+  testing.value = true
+  testResult.value = null
+  providerAPI.test({
+    provider: form.provider,
+    model: form.model || undefined,
+    api_key: form.api_key || undefined,
+    api_base: form.api_base || undefined,
+  })
+    .then((res) => { testResult.value = res.data })
+    .catch((e) => { testResult.value = { ok: false, error: e.message } })
+    .finally(() => { testing.value = false })
+}
+
+// ── 其余（MCP / 技能 / 缓存 / 运行时配置）─────────────────────
 
 async function loadMcp() {
   try {
