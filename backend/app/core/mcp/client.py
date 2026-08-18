@@ -52,15 +52,40 @@ class McpConnectionPool:
         self.config = config
         self.name = config.get("name", "external")
         transport = config.get("transport", "stdio")
-        # stdio 子进程串行：强制 1；SSE 取条目配置或全局默认
-        requested = int(config.get("pool_size") or settings.mcp.default_pool_size)
+        # stdio 子进程串行：强制 1；SSE 取条目配置或全局默认（显式 0 不回落默认）
+        raw_ps = config.get("pool_size")
+        requested = int(raw_ps) if raw_ps is not None else settings.mcp.default_pool_size
         self._max_sessions = 1 if transport == "stdio" else max(1, requested)
-        self.connect_timeout = float(config.get("connect_timeout") or settings.mcp.default_connect_timeout)
-        self.max_retries = max(0, int(config.get("max_retries") or settings.mcp.default_max_retries))
+        raw_ct = config.get("connect_timeout")
+        self.connect_timeout = float(raw_ct) if raw_ct is not None else settings.mcp.default_connect_timeout
+        raw_rt = config.get("max_retries")
+        self.max_retries = max(0, int(raw_rt)) if raw_rt is not None else settings.mcp.default_max_retries
         self._sessions: list[SimpleNamespace] = []  # {session, stream_cm, busy}
         self._lock = asyncio.Lock()          # 建连/清理/簿记串行
         self._sem = asyncio.Semaphore(self._max_sessions)  # 容量门闩
         self._closed = False
+        self._last_error: Optional[str] = None
+        self._connected_at: Optional[str] = None
+
+    # ── 可观测性（J 轮）──────────────────────────────────────────
+
+    def status(self) -> dict:
+        """连接池实时状态（供 /api/mcp/servers 展示；近似读，不加锁）"""
+        sessions = len(self._sessions)
+        busy = sum(1 for s in self._sessions if s.busy)
+        return {
+            "name": self.name,
+            "transport": self.config.get("transport", "stdio"),
+            "pool_size": self._max_sessions,
+            "sessions": sessions,
+            "busy": busy,
+            "idle": max(0, sessions - busy),
+            "connect_timeout": self.connect_timeout,
+            "max_retries": self.max_retries,
+            "closed": self._closed,
+            "connected_at": self._connected_at,
+            "last_error": self._last_error,
+        }
 
     # ── 连接生命周期 ────────────────────────────────────────────
 
@@ -89,6 +114,10 @@ class McpConnectionPool:
                 return
             ps = await self._connect_one()
             self._sessions.append(ps)
+            if self._connected_at is None:
+                import datetime
+
+                self._connected_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
     @staticmethod
     async def _close_one(ps: SimpleNamespace) -> None:
@@ -164,6 +193,7 @@ class McpConnectionPool:
             try:
                 return (await ps.session.list_tools()).tools
             except Exception as e:
+                self._last_error = f"list_tools: {e}"
                 logger.warning(f"MCP 工具发现失败，重建会话: {self.name}: {e}")
                 await self._discard(ps)
                 ps = await self._acquire()
@@ -187,6 +217,7 @@ class McpConnectionPool:
                 return "\n".join(texts) or "(无文本返回)"
             except Exception as e:
                 last_err = e
+                self._last_error = f"{tool_name}: {e}"
                 logger.warning(f"MCP 调用失败，销毁会话重试: {self.name}.{tool_name} (第{attempt + 1}次): {e}")
                 await self._discard(ps)
             finally:
@@ -208,8 +239,10 @@ def get_pool(config: dict) -> McpConnectionPool:
         _pools[name] = pool
     elif not pool._closed:
         pool.config = config  # 刷新配置（超时/重试下次生效；pool_size 首次建池后固定）
-        pool.connect_timeout = float(config.get("connect_timeout") or settings.mcp.default_connect_timeout)
-        pool.max_retries = max(0, int(config.get("max_retries") or settings.mcp.default_max_retries))
+        raw_ct = config.get("connect_timeout")
+        pool.connect_timeout = float(raw_ct) if raw_ct is not None else settings.mcp.default_connect_timeout
+        raw_rt = config.get("max_retries")
+        pool.max_retries = max(0, int(raw_rt)) if raw_rt is not None else settings.mcp.default_max_retries
     return pool
 
 

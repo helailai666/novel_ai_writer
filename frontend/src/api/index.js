@@ -432,6 +432,22 @@ export const mcpAPI = {
   }
 }
 
+// ─── 缓存 / 运行时配置 API（J 轮可观测性）────────────────
+export const cacheAPI = {
+  stats() {
+    return http.get('/cache/stats')
+  },
+  clear() {
+    return http.post('/cache/clear')
+  }
+}
+
+export const runtimeAPI = {
+  config() {
+    return http.get('/runtime/config')
+  }
+}
+
 // 默认导出（快捷调用）
 export default {
   ...projectAPI,
@@ -447,5 +463,7 @@ export default {
   ...toolsAPI,
   ...skillsAPI,
   ...providerAPI,
-  ...mcpAPI
+  ...mcpAPI,
+  ...cacheAPI,
+  ...runtimeAPI
 }

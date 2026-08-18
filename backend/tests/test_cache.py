@@ -168,3 +168,76 @@ async def test_retriever_cache_mutation_isolation(monkeypatch):
     r2 = await rt.retrieve("境界划分")
     assert r2["docs"][0]["title"] == "修仙体系", "缓存值应隔离调用方修改"
     assert len(r2["memes"]) == 1
+
+
+# ── J1 缓存可观测性（计数 + 端点）─────────────────────────────────
+
+def test_ttlcache_stats_counting():
+    """命中/未命中/淘汰计数正确"""
+    from app.core.cache import TTLCache
+
+    c = TTLCache(ttl=60, max_entries=2, copy_on_get=False)
+    assert c.get("a") is None
+    c.set("a", 1)
+    c.set("b", 2)
+    c.set("c", 3)  # 超容量 → 淘汰 a
+    assert c.get("a") is None
+    assert c.get("b") == 2
+    assert c.get("c") == 3
+
+    stats = c.stats()
+    assert stats["hits"] == 2, stats
+    assert stats["misses"] == 2, stats  # 首次 miss + 淘汰后 miss
+    assert stats["evictions"] == 1, stats
+    assert stats["size"] == 2 and stats["max_entries"] == 2
+
+    # 过期 → miss + eviction
+    c2 = TTLCache(ttl=0.05, copy_on_get=False)
+    c2.set("x", 1)
+    import time
+
+    time.sleep(0.06)
+    assert c2.get("x") is None
+    s2 = c2.stats()
+    assert s2["misses"] == 1 and s2["evictions"] == 1
+
+    # 清空计数
+    c.reset_stats()
+    assert c.stats()["hits"] == 0 and c.stats()["misses"] == 0
+
+
+@pytest.fixture
+def client():
+    """TestClient（mock 模式，临时 DB）"""
+    from fastapi.testclient import TestClient
+
+    import app.main as m
+
+    with TestClient(m.app) as c:
+        yield c
+
+
+def test_cache_api_stats_and_clear(client):
+    """GET /api/cache/stats 结构 + POST /api/cache/clear 清空"""
+    from app.agents.graphs import supervisor as sup
+    from app.core.knowledge import retriever as rtr
+
+    # 制造缓存数据与命中
+    sup._classify_cache.set("t1", ("setting", {}))
+    assert sup._classify_cache.get("t1") == ("setting", {})
+    rtr._retrieve_cache.set("q1", {"docs": []})
+    assert rtr._retrieve_cache.get("q1") == {"docs": []}
+
+    r = client.get("/api/cache/stats")
+    assert r.status_code == 200
+    body = r.json()
+    assert {"classify", "retrieve"} <= set(body)
+    assert body["classify"]["hits"] >= 1 and body["classify"]["size"] == 1
+    assert body["retrieve"]["hits"] >= 1 and body["retrieve"]["size"] == 1
+    assert "api_key" not in str(body), "统计响应不应含密钥"
+
+    r = client.post("/api/cache/clear")
+    assert r.status_code == 200 and r.json()["cleared"] is True
+    body = client.get("/api/cache/stats").json()
+    assert body["classify"]["size"] == 0 and body["retrieve"]["size"] == 0
+    assert body["classify"]["hits"] == 0 and body["retrieve"]["hits"] == 0

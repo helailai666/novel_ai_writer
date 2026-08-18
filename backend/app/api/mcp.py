@@ -15,8 +15,27 @@ router = APIRouter(prefix="/api/mcp", tags=["mcp"])
 
 @router.get("/servers")
 async def list_mcp_servers():
-    """列出已配置的外部 MCP server"""
-    return {"servers": load_mcp_config()}
+    """列出已配置的外部 MCP server（含实时连接池状态，J 轮）"""
+    from app.core.mcp.client import _pools
+
+    servers = []
+    for cfg in load_mcp_config():
+        name = cfg.get("name", "unknown")
+        pool = _pools.get(name)
+        servers.append({
+            "name": name,
+            "transport": cfg.get("transport", "stdio"),
+            "command": cfg.get("command"),
+            "url": cfg.get("url"),
+            "enabled": cfg.get("enabled", True),
+            "configured": {
+                "pool_size": cfg.get("pool_size"),
+                "connect_timeout": cfg.get("connect_timeout"),
+                "max_retries": cfg.get("max_retries"),
+            },
+            "status": pool.status() if pool else None,
+        })
+    return {"servers": servers}
 
 
 @router.post("/reload")

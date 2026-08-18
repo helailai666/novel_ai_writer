@@ -321,3 +321,28 @@ def test_mcp_pool_config_refresh_updates_timeout_and_retries():
     refreshed = mcp_client.get_pool({"name": "cfg", "transport": "sse", "url": "http://x", "max_retries": 3, "connect_timeout": 12.0})
     assert refreshed is p
     assert p.max_retries == 3 and p.connect_timeout == 12.0
+
+
+async def test_mcp_pool_status_reports_state(monkeypatch):
+    """J1: status() 反映 transport/pool_size/会话数/连接时间/错误"""
+    import app.core.mcp.client as mcp_client
+
+    _fake_connect_one(monkeypatch, {"created": 0})
+    pool = mcp_client.McpConnectionPool({"name": "st", "transport": "sse", "url": "http://x", "pool_size": 2, "max_retries": 1})
+    st = pool.status()
+    assert st["transport"] == "sse" and st["pool_size"] == 2
+    assert st["sessions"] == 0 and st["closed"] is False and st["last_error"] is None
+
+    await pool.call_tool("t", {})
+    st = pool.status()
+    assert st["sessions"] == 1 and st["idle"] == 1 and st["busy"] == 0
+    assert st["connected_at"] is not None
+
+    # 调用失败后 last_error 记录
+    _fake_connect_one(monkeypatch, {"created": 0}, fail_times=1)
+    pool2 = mcp_client.McpConnectionPool({"name": "st2", "transport": "sse", "url": "http://x", "pool_size": 1, "max_retries": 0})
+    with pytest.raises(RuntimeError):
+        await pool2.call_tool("t", {})
+    assert pool2.status()["last_error"], "失败应记录 last_error"
+    await pool.close()
+    await pool2.close()

@@ -49,15 +49,76 @@
             <n-text depth="2">已配置 {{ mcpServers.length }} 个外部 server</n-text>
             <n-button size="small" :loading="mcpLoading" @click="reloadMcp">重连桥接</n-button>
           </n-space>
-          <n-list v-if="bridgedTools.length">
-            <n-list-item v-for="t in bridgedTools" :key="t.name">
-              <n-text>{{ t.name }}</n-text>
+          <n-list v-if="mcpServers.length">
+            <n-list-item v-for="s in mcpServers" :key="s.name">
+              <n-space vertical size="small" style="width:100%">
+                <n-space align="center" justify="space-between">
+                  <n-space align="center">
+                    <b>{{ s.name }}</b>
+                    <n-tag size="tiny" :type="s.enabled ? 'info' : 'default'">{{ s.transport }}</n-tag>
+                  </n-space>
+                  <n-tag v-if="s.status" size="tiny" :type="s.status.closed ? 'error' : s.status.sessions ? 'success' : 'default'">
+                    {{ s.status.closed ? '已关闭' : s.status.sessions ? `会话 ${s.status.busy}/${s.status.sessions}` : '未连接' }}
+                  </n-tag>
+                </n-space>
+                <n-text v-if="s.status" depth="3" style="font-size:12px">
+                  池大小 {{ s.status.pool_size }} · 超时 {{ s.status.connect_timeout }}s · 重试 {{ s.status.max_retries }}
+                  <span v-if="s.status.connected_at"> · {{ s.status.connected_at }}</span>
+                </n-text>
+                <n-text v-if="s.status && s.status.last_error" depth="3" style="font-size:12px;color:#ef4444">
+                  最近错误：{{ s.status.last_error }}
+                </n-text>
+              </n-space>
             </n-list-item>
           </n-list>
-          <n-empty v-else description="暂无已桥接的外部工具（配置 backend/config/mcp_servers.yaml 启用）" size="small" style="margin-top:12px" />
+          <n-empty v-else description="暂无已配置的外部 server（backend/config/mcp_servers.yaml）" size="small" style="margin-top:12px" />
+          <n-divider style="margin:8px 0" />
+          <n-text depth="3" style="font-size:12px">已桥接工具：{{ bridgedTools.map((t) => t.name).join('、') || '无' }}</n-text>
         </n-card>
       </n-grid-item>
     </n-grid>
+
+    <!-- 运行时缓存 -->
+    <n-card title="⚡ 运行时缓存" size="small" style="margin-top:16px">
+      <n-space align="center" justify="space-between" style="margin-bottom:8px">
+        <n-text depth="3" style="font-size:12px">意图分类 / 知识检索 命中统计（TTL 秒）</n-text>
+        <n-button size="small" :loading="clearing" @click="clearCaches">清空缓存</n-button>
+      </n-space>
+      <n-grid :cols="2" :x-gap="12" responsive="screen">
+        <n-grid-item v-for="(st, name) in cacheStats" :key="name">
+          <n-card size="small" :bordered="false" class="cache-card">
+            <n-text depth="2" style="font-size:12px;font-weight:600">{{ name === 'classify' ? '意图分类' : '知识检索' }}</n-text>
+            <n-descriptions size="small" :column="2" label-placement="left">
+              <n-descriptions-item label="命中">{{ st.hits }}</n-descriptions-item>
+              <n-descriptions-item label="未命中">{{ st.misses }}</n-descriptions-item>
+              <n-descriptions-item label="淘汰">{{ st.evictions }}</n-descriptions-item>
+              <n-descriptions-item label="当前">{{ st.size }} 条</n-descriptions-item>
+            </n-descriptions>
+          </n-card>
+        </n-grid-item>
+      </n-grid>
+    </n-card>
+
+    <!-- 运行时配置 -->
+    <n-card title="🔧 运行时配置" size="small" style="margin-top:16px">
+      <n-descriptions size="small" :column="2" label-placement="left" bordered>
+        <n-descriptions-item label="LLM">
+          {{ cfg.llm.provider }} / {{ cfg.llm.model }}
+          <n-tag v-if="cfg.llm.has_api_key" size="tiny" type="success" style="margin-left:6px">有 Key</n-tag>
+        </n-descriptions-item>
+        <n-descriptions-item label="搜索">{{ cfg.search.provider }}</n-descriptions-item>
+        <n-descriptions-item label="向量后端">{{ cfg.vector_store.backend }}</n-descriptions-item>
+        <n-descriptions-item label="Embedding">{{ cfg.embedding.provider }} / {{ cfg.embedding.model }}</n-descriptions-item>
+        <n-descriptions-item label="意图分类">
+          {{ cfg.agent.llm_supervisor ? 'LLM 优先' : '关键词' }} · 缓存 {{ cfg.agent.llm_supervisor_cache ? cfg.agent.llm_supervisor_cache_ttl + 's' : '关' }}
+        </n-descriptions-item>
+        <n-descriptions-item label="检索缓存">{{ cfg.agent.knowledge_cache ? cfg.agent.knowledge_cache_ttl + 's' : '关' }}</n-descriptions-item>
+        <n-descriptions-item label="MCP 池默认">
+          size={{ cfg.mcp.default_pool_size }} · timeout={{ cfg.mcp.default_connect_timeout }}s · retry={{ cfg.mcp.default_max_retries }}
+        </n-descriptions-item>
+        <n-descriptions-item label="技能目录">{{ (cfg.skills.dirs || []).join(', ') }}</n-descriptions-item>
+      </n-descriptions>
+    </n-card>
 
     <!-- 技能包 -->
     <n-card title="🎯 技能包" size="small" style="margin-top:16px">
@@ -84,7 +145,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
-import { providerAPI, mcpAPI, skillsAPI } from '../api/index.js'
+import { providerAPI, mcpAPI, skillsAPI, cacheAPI, runtimeAPI } from '../api/index.js'
 
 const message = useMessage()
 const current = reactive({ provider: 'openai', model: '', api_base: '', api_key: '' })
@@ -96,6 +157,9 @@ const mcpServers = ref([])
 const bridgedTools = ref([])
 const mcpLoading = ref(false)
 const skills = ref([])
+const cacheStats = ref({})
+const clearing = ref(false)
+const cfg = ref({ llm: {}, search: {}, embedding: {}, vector_store: {}, mcp: {}, agent: {}, skills: {} })
 
 const providerOptions = computed(() =>
   providers.value.map((p) => ({ label: p.name, value: p.name }))
@@ -121,6 +185,8 @@ onMounted(async () => {
   }
   loadMcp()
   loadSkills()
+  loadCacheStats()
+  loadRuntimeConfig()
 })
 
 async function testProvider() {
@@ -173,10 +239,42 @@ async function loadSkills() {
     /* 忽略 */
   }
 }
+
+async function loadCacheStats() {
+  try {
+    const res = await cacheAPI.stats()
+    cacheStats.value = res.data || {}
+  } catch (e) {
+    /* 忽略 */
+  }
+}
+
+async function clearCaches() {
+  clearing.value = true
+  try {
+    await cacheAPI.clear()
+    message.success('运行时缓存已清空')
+    await loadCacheStats()
+  } catch (e) {
+    message.error(e.message || '清空失败')
+  } finally {
+    clearing.value = false
+  }
+}
+
+async function loadRuntimeConfig() {
+  try {
+    const res = await runtimeAPI.config()
+    cfg.value = res.data || cfg.value
+  } catch (e) {
+    /* 忽略 */
+  }
+}
 </script>
 
 <style scoped>
 .settings-page { max-width: 1200px; margin: 0 auto; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
 .page-header h2 { margin: 0 0 4px 0; }
+.cache-card { background: #fafafa; border: 1px solid #f0f0f0; }
 </style>

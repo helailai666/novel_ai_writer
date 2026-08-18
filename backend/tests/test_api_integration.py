@@ -161,3 +161,37 @@ def test_tools_skills_providers_api(client):
     assert len(providers["providers"]) == 10
     r = client.post("/api/model-providers/test", json={"provider": "mock", "model": "mock"})
     assert r.json()["ok"] is True and r.json()["is_mock"] is True
+
+
+def test_runtime_config_endpoint(client):
+    """J3: /api/runtime/config 返回脱敏有效配置"""
+    r = client.get("/api/runtime/config")
+    assert r.status_code == 200
+    body = r.json()
+    for group in ("llm", "search", "embedding", "vector_store", "mcp", "agent", "skills"):
+        assert group in body, f"缺少配置分组: {group}"
+    # 不允许出现名为 api_key 的键（has_api_key 是布尔标记，允许）
+    keys = set()
+
+    def _walk(d):
+        for k, v in d.items():
+            keys.add(k)
+            if isinstance(v, dict):
+                _walk(v)
+
+    _walk(body)
+    assert "api_key" not in keys, "运行时配置不应包含 api_key 字段"
+    assert body["agent"]["llm_supervisor_cache"] is True
+    assert body["vector_store"]["backend"] in {"chroma", "local", "mock"}
+
+
+def test_mcp_servers_endpoint_shape(client):
+    """J1: /api/mcp/servers 返回配置 + 实时池状态字段"""
+    r = client.get("/api/mcp/servers")
+    assert r.status_code == 200
+    body = r.json()
+    assert "servers" in body
+    for s in body["servers"]:
+        assert {"name", "transport", "enabled", "configured"} <= set(s)
+        assert {"pool_size", "connect_timeout", "max_retries"} <= set(s["configured"])
+        assert "status" in s
