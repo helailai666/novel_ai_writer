@@ -298,3 +298,27 @@ async def delete_run(run_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="运行记录不存在")
     await db.delete(run)
     await db.commit()
+
+
+@router.post("/runs/{run_id}/retry")
+async def retry_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    """重试失败/历史运行（N 轮）：读 input_data 重建 state 重跑，产生新 run"""
+    result = await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="运行记录不存在")
+    try:
+        state = json.loads(run.input_data or "{}")
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"运行输入数据损坏: {e}")
+    graph = state.get("graph")
+    if graph not in ("setting", "chapter", "review", "qa", "chat"):
+        raise HTTPException(status_code=422, detail=f"未知图: {graph}")
+    try:
+        from app.agents.runner import get_runner
+
+        result = await get_runner().ainvoke(graph, state)
+        return {"retried": True, "source_run_id": run_id, "graph": graph, "result": result}
+    except Exception as e:
+        logger.error(f"retry_run failed: {e}")
+        return {"retried": False, "source_run_id": run_id, "error": str(e)[:500]}

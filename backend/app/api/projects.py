@@ -17,6 +17,10 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 # ── Pydantic Schemas ─────────────────────────────────────────────
 
+class ProjectImportRequest(BaseModel):
+    """JSON 备份导入（N 轮：L 轮 export?format=json 的格式）"""
+    backup: dict = Field(..., description="L 轮导出的全量备份 JSON")
+
 class ProjectCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     genre: str = Field(default="fantasy", max_length=50)
@@ -50,6 +54,12 @@ class ProjectResponse(BaseModel):
 async def create_project(payload: ProjectCreate, db: AsyncSession = Depends(get_db)):
     """创建新项目"""
     return await ProjectService.create(db, payload.model_dump())
+
+
+@router.post("/import", status_code=201)
+async def import_project(payload: ProjectImportRequest, db: AsyncSession = Depends(get_db)):
+    """从 JSON 备份还原项目（N 轮）"""
+    return await ProjectService.import_json(db, payload.backup)
 
 
 @router.get("/", response_model=List[ProjectResponse])

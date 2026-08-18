@@ -337,6 +337,12 @@ async def delete_foreshadow(project_id: str, foreshadow_id: str, db: AsyncSessio
     await SettingService.delete(db, project_id, "foreshadows", foreshadow_id)
 
 
+@router.post("/audit")
+async def audit_settings(project_id: str, db: AsyncSession = Depends(get_db)):
+    """全项目设定体检（N 轮）：LLM 一致性扫描全部设定"""
+    return await SettingService.audit(db, project_id)
+
+
 # ── AI 辅助生成端点 ─────────────────────────────────────────────
 
 @router.post("/ai/generate-world", response_model=AIGenerateResponse)

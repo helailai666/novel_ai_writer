@@ -265,10 +265,13 @@ const columns = [
     render: (r) => h('span', { style: 'font-size:12px;color:#888' }, `${r.duration_seconds}s`),
   },
   {
-    title: '操作', key: 'actions', width: 140,
+    title: '操作', key: 'actions', width: 190,
     render: (r) => h('span', [
       h(NButton, { size: 'tiny', quaternary: true, onClick: () => openDetail(r) }, {
         default: () => h('span', [h(NIcon, { size: 14 }, { default: () => h(EyeOutline) }), ' 查看']),
+      }),
+      h(NButton, { size: 'tiny', quaternary: true, type: 'warning', onClick: () => retryRun(r) }, {
+        default: () => h('span', [h(NIcon, { size: 14 }, { default: () => h(RefreshOutline) }), ' 重试']),
       }),
       h(NButton, { size: 'tiny', quaternary: true, type: 'error', onClick: () => removeRun(r) }, {
         default: () => h('span', [h(NIcon, { size: 14 }, { default: () => h(TrashOutline) }), ' 删除']),
@@ -317,6 +320,20 @@ async function removeRun(r) {
     await loadRuns()
   } catch (e) {
     message.error(e.message || '删除失败')
+  }
+}
+
+async function retryRun(r) {
+  try {
+    const res = await agentsAPI.retryRun(r.id)
+    if (res.retried) {
+      message.success(`已重试（${res.graph}），生成新运行记录`)
+      await loadRuns()
+    } else {
+      message.error(res.error || '重试失败')
+    }
+  } catch (e) {
+    message.error(e.message || '重试失败')
   }
 }
 

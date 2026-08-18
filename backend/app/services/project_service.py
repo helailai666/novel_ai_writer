@@ -1,6 +1,7 @@
-"""项目服务 — 项目 CRUD + 导出"""
+"""项目服务 — 项目 CRUD + 导出 + JSON 导入还原"""
 
 import json
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -19,8 +20,34 @@ from app.models.knowledge_doc import KnowledgeDoc
 from app.models.location import Location
 from app.models.outline import Outline
 from app.models.skill import Skill
+from app.models.timeline import Timeline
 from app.models.volume import Volume
 from app.models.world_setting import WorldSetting
+
+logger = logging.getLogger(__name__)
+
+# N 轮：JSON 导入还原的表（与 export_json 对应；知识 doc 单独走 ingest 重建切块）
+# 顺序即插入顺序：被引用的表（volumes/chapters）在前，foreshadows 最后（引用章节）
+_IMPORT_TABLES: list[tuple[str, type]] = [
+    ("volumes", Volume),
+    ("chapters", Chapter),
+    ("characters", Character),
+    ("items", Item),
+    ("skills", Skill),
+    ("factions", Faction),
+    ("locations", Location),
+    ("outlines", Outline),
+    ("world_settings", WorldSetting),
+    ("timelines", Timeline),
+    ("hot_memes", HotMeme),
+    ("foreshadows", Foreshadow),
+]
+
+# 跨表引用重映射：{目标表: {字段: 源表}}
+_REMAP = {
+    "chapters": {"volume_id": "volumes"},
+    "foreshadows": {"plant_chapter_id": "chapters", "reveal_chapter_id": "chapters"},
+}
 
 
 def _to_response(p: Project) -> dict:
@@ -52,6 +79,66 @@ class ProjectService:
         project = Project(**data)
         db.add(project)
         await db.flush()
+        await db.refresh(project)
+        return _to_response(project)
+
+    @staticmethod
+    async def import_json(db: AsyncSession, backup: dict) -> dict:
+        """从 JSON 备份还原项目（N 轮）
+
+        - 项目元信息重建；创作表生成新 id 并维护 old→new 映射，
+          跨表引用（chapters.volume_id、foreshadows.*_chapter_id）经 _REMAP 重映射
+        - 知识文档走 KnowledgeService.ingest 重建切块与向量
+        """
+        proj = backup.get("project") or {}
+        if not proj.get("title"):
+            raise HTTPException(status_code=400, detail="备份缺少 project.title")
+        project = Project(
+            title=proj["title"][:200],
+            genre=proj.get("genre") or "fantasy",
+            synopsis=proj.get("synopsis") or "",
+            status=proj.get("status") or "draft",
+            skill_packs=proj.get("skill_packs") or "",
+        )
+        db.add(project)
+        await db.flush()
+        pid = project.id
+        id_maps: dict[str, dict[str, str]] = {key: {} for key, _ in _IMPORT_TABLES}
+        for key, model in _IMPORT_TABLES:
+            remap = _REMAP.get(key) or {}
+            for row in backup.get(key) or []:
+                if not isinstance(row, dict):
+                    continue
+                fields = {
+                    c.name: row[c.name]
+                    for c in model.__table__.columns
+                    if c.name in row and c.name not in ("id", "project_id", "created_at", "updated_at")
+                }
+                for field, src_table in remap.items():
+                    ref = fields.get(field)
+                    if ref and ref in id_maps.get(src_table, {}):
+                        fields[field] = id_maps[src_table][ref]
+                old_id = row.get("id")
+                obj = model(project_id=pid, **fields)
+                db.add(obj)
+                await db.flush()
+                if old_id:
+                    id_maps[key][str(old_id)] = obj.id
+        # 知识文档：重建切块与向量
+        from app.services.knowledge_service import KnowledgeService
+
+        for d in backup.get("knowledge_docs") or []:
+            if not isinstance(d, dict) or not d.get("title"):
+                continue
+            try:
+                await KnowledgeService.ingest_text(
+                    db, d["title"], d.get("content") or "",
+                    category=d.get("category") or "general",
+                    tags=d.get("tags") or "", project_id=pid,
+                )
+            except Exception as e:
+                logger.warning(f"导入知识文档失败（跳过）: {e}")
+        await db.commit()
         await db.refresh(project)
         return _to_response(project)
 

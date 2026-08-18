@@ -1,9 +1,11 @@
-"""设定服务 — 9 大创作模块 CRUD + AI 生成
+"""设定服务 — 9 大创作模块 CRUD + AI 生成 + 全项目体检
 
 模块: world / characters / skills / items / factions / outlines / locations / timelines / foreshadows
 所有方法接收 FastAPI 依赖注入的 AsyncSession，事务由 get_db 依赖统一提交。
 """
 
+import json
+import logging
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -111,6 +113,63 @@ class SettingService:
         obj = await _get_or_404(model, obj_id, db, project_id)
         await db.delete(obj)
         await db.flush()
+
+    # ── 全项目设定体检（N 轮）───────────────────────────────────
+
+    AUDIT_SYSTEM = """你是小说设定一致性审查员。审查给定作品的设定资料，找出相互冲突、矛盾或明显不合理之处。
+输出 JSON：{"issues": [{"severity": "high|medium|low", "module": "world|characters|items|skills|factions|locations|outlines|timelines|foreshadows", "title": "设定条目名", "issue": "冲突描述", "suggestion": "修改建议"}], "summary": "总体一致性评价"}。
+没有冲突时 issues 为空数组。仅输出 JSON。"""
+
+    @staticmethod
+    async def audit(db: AsyncSession, project_id: str) -> dict:
+        """全项目设定体检：汇总 9 模块设定 → LLM 一致性扫描 → issues"""
+        modules = list(MODULES.keys())
+        payload: list[str] = []
+        for module in modules:
+            model = MODULES[module]
+            result = await db.execute(select(model).where(model.project_id == project_id))
+            for o in result.scalars().all():
+                d = _dict_from_model(o)
+                title = d.get("name") or d.get("title") or d.get("event") or d.get("id", "")
+                content = (
+                    d.get("content") or d.get("description") or d.get("background")
+                    or d.get("summary") or d.get("goal") or ""
+                )
+                if content:
+                    payload.append(f"[{module}] {title}: {str(content)[:400]}")
+        if not payload:
+            return {"checked": 0, "issues": [], "summary": "项目暂无设定资料"}
+        from app.core.llm import LLMMessage, LLMRequest, create
+        from app.agents.nodes.common import is_mock_provider
+
+        llm = create()
+        resp = await llm.acomplete(LLMRequest(
+            messages=[
+                LLMMessage(role="system", content=SettingService.AUDIT_SYSTEM),
+                LLMMessage(role="user", content=f"【项目设定资料】\n{chr(10).join(payload[:80])[:12000]}"),
+            ],
+            response_format={"type": "json_object"},
+        ))
+        try:
+            data = json.loads(resp.content)
+        except Exception:
+            data = {}
+        issues: list[dict] = []
+        for it in (data.get("issues") or [])[:50]:
+            if isinstance(it, dict):
+                issues.append({
+                    "severity": str(it.get("severity") or "medium"),
+                    "module": str(it.get("module") or "?"),
+                    "title": str(it.get("title") or "")[:120],
+                    "issue": str(it.get("issue") or "")[:500],
+                    "suggestion": str(it.get("suggestion") or "")[:300],
+                })
+        return {
+            "checked": len(payload),
+            "issues": issues,
+            "summary": str(data.get("summary") or "")[:300],
+            "is_mock": is_mock_provider(llm),
+        }
 
     # ── AI 生成（LangGraph setting 图驱动；生成+持久化在图内完成）──
 

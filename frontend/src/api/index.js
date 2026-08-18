@@ -50,6 +50,9 @@ export const projectAPI = {
   },
   exportProject(id, format = 'txt') {
     return http.get(`/projects/${id}/export`, { params: { format }, responseType: 'blob' })
+  },
+  importProject(backup) {
+    return http.post('/projects/import', { backup })
   }
 }
 
@@ -220,6 +223,9 @@ export const settingsAPI = {
   },
   deleteForeshadow(projectId, foreshadowId) {
     return http.delete(`/projects/${projectId}/settings/foreshadows/${foreshadowId}`)
+  },
+  audit(projectId) {
+    return http.post(`/projects/${projectId}/settings/audit`)
   }
 }
 
@@ -380,6 +386,9 @@ export const agentsAPI = {
   },
   deleteRun(runId) {
     return http.delete(`/agents/runs/${runId}`)
+  },
+  retryRun(runId) {
+    return http.post(`/agents/runs/${runId}/retry`)
   },
   clearRuns(params) {
     return http.delete('/agents/runs', { params })

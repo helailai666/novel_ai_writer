@@ -2,7 +2,17 @@
   <div>
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
       <n-h2>📋 小说项目</n-h2>
-      <n-button type="primary" @click="showCreate = true">➕ 新建项目</n-button>
+      <n-space>
+        <n-button type="primary" ghost @click="importFileRef?.click()">📥 导入备份</n-button>
+        <input
+          ref="importFileRef"
+          type="file"
+          accept=".json,application/json"
+          style="display:none"
+          @change="handleImportFile"
+        />
+        <n-button type="primary" @click="showCreate = true">➕ 新建项目</n-button>
+      </n-space>
     </div>
 
     <!-- 统计卡片 -->
@@ -59,9 +69,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useMessage } from 'naive-ui'
 import { projectAPI } from '../api/index.js'
 
 const router = useRouter()
+const message = useMessage()
+const importFileRef = ref(null)
+const importing = ref(false)
 const projects = ref([])
 const loading = ref(true)
 const showCreate = ref(false)
@@ -100,6 +114,26 @@ async function handleCreate() {
     await load()
   } catch { /* handled by interceptor */ }
   finally { creating.value = false }
+}
+
+async function handleImportFile(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file) return
+  if (importing.value) return
+  importing.value = true
+  try {
+    const text = await file.text()
+    const backup = JSON.parse(text)
+    if (!backup?.project?.title) throw new Error('不是有效的备份文件（缺少 project.title）')
+    const res = await projectAPI.importProject(backup)
+    message.success(`已导入「${res.title}」`)
+    router.push(`/projects/${res.id}`)
+  } catch (err) {
+    message.error(err.message || '导入失败，请选择 L 轮导出的 JSON 备份')
+  } finally {
+    importing.value = false
+  }
 }
 
 onMounted(load)

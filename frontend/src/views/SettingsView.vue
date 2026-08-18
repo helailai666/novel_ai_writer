@@ -1,6 +1,9 @@
 <template>
   <n-page-header @back="$router.back()">
     <template #title>🌍 设定管理</template>
+    <template #extra>
+      <n-button type="warning" :loading="auditLoading" @click="runAudit">🩺 全项目体检</n-button>
+    </template>
   </n-page-header>
 
   <!-- 项目级技能包 -->
@@ -15,8 +18,7 @@
     </n-space>
   </n-card>
 
-  <n-tabs type="line" default-value="world" style="margin-top:20px;">
-    <n-tab-pane name="world" tab="🌍 世界观">
+  <n-tabs type="line" default-value="world" style="margin-top:20px;">    <n-tab-pane name="world" tab="🌍 世界观">
       <n-card>
         <n-space vertical>
           <n-button @click="aiGenerate('world')" :loading="aiLoad.world" type="primary">
@@ -101,6 +103,36 @@
       </n-card>
     </n-tab-pane>
   </n-tabs>
+
+  <!-- 体检结果弹窗（N 轮） -->
+  <n-modal v-model:show="showAudit" preset="card" title="🩺 设定一致性体检" style="width:640px">
+    <n-spin :show="auditLoading">
+      <template v-if="auditResult">
+        <n-alert :type="auditResult.issues?.length ? 'warning' : 'success'" style="margin-bottom:12px">
+          <b>共检查 {{ auditResult.checked }} 条设定</b>，发现 {{ auditResult.issues?.length || 0 }} 处问题。
+          <div v-if="auditResult.summary" style="margin-top:6px">{{ auditResult.summary }}</div>
+        </n-alert>
+        <n-empty v-if="!auditResult.issues?.length" description="未发现明显冲突 🎉" />
+        <n-list v-else>
+          <n-list-item v-for="(it, i) in auditResult.issues" :key="i">
+            <template #prefix>
+              <n-tag size="small" :type="it.severity === 'high' ? 'error' : it.severity === 'medium' ? 'warning' : 'info'">
+                {{ it.severity }}
+              </n-tag>
+            </template>
+            <template #header>
+              <b>[{{ it.module }}] {{ it.title }}</b>
+            </template>
+            {{ it.issue }}
+            <div v-if="it.suggestion" style="color:#18a058;font-size:12px;margin-top:4px">💡 {{ it.suggestion }}</div>
+          </n-list-item>
+        </n-list>
+        <n-text v-if="auditResult.is_mock" depth="3" style="font-size:12px">
+          ⚠️ 当前为 Mock 模式，配置 LLM API Key 后获得真实一致性分析。
+        </n-text>
+      </template>
+    </n-spin>
+  </n-modal>
 </template>
 
 <script setup>
@@ -188,6 +220,26 @@ async function aiGenerate(module) {
     message.error(`AI 生成失败: ${e.message || '未知错误'}`)
   } finally {
     aiLoad[module] = false
+  }
+}
+
+// ── 全项目体检（N 轮）───────────────────────────────────────
+const showAudit = ref(false)
+const auditLoading = ref(false)
+const auditResult = ref(null)
+
+async function runAudit() {
+  if (auditLoading.value) return
+  showAudit.value = true
+  auditLoading.value = true
+  auditResult.value = null
+  try {
+    auditResult.value = await settingsAPI.audit(pid())
+  } catch (e) {
+    message.error(e.message || '体检失败')
+    showAudit.value = false
+  } finally {
+    auditLoading.value = false
   }
 }
 

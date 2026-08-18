@@ -229,6 +229,71 @@ def test_timeline_and_foreshadow_management(client, project):
     assert client.delete(f"/api/projects/{project}/settings/foreshadows/{f['id']}").status_code == 204
 
 
+def test_import_json_restores_project(client, project):
+    """N 轮：导出 → 导入还原（含伏笔章节引用与知识文档）"""
+    # 准备源项目数据
+    client.post(f"/api/projects/{project}/settings/characters", json={"name": "林玄", "role": "protagonist"})
+    ch = client.post(f"/api/projects/{project}/writing/chapters",
+                     json={"title": "第一章", "content": "正文内容……", "chapter_number": 1}).json()
+    client.post(f"/api/projects/{project}/settings/foreshadows",
+                json={"description": "玉佩发光", "plant_chapter_id": ch["id"], "status": "planted"})
+    client.post("/api/knowledge/ingest", params={
+        "title": "修仙境界", "content": "练气→筑基→金丹→元婴", "category": "worldview", "tags": "修仙", "project_id": project,
+    })
+    backup = json.loads(client.get(f"/api/projects/{project}/export", params={"format": "json"}).text)
+
+    # 导入为新项目
+    r = client.post("/api/projects/import", json={"backup": backup})
+    assert r.status_code == 201, r.text
+    new_id = r.json()["id"]
+    assert new_id != project
+    assert r.json()["title"] == "API集成测试"
+
+    # 还原校验
+    chapters = client.get(f"/api/projects/{new_id}/writing/chapters").json()
+    assert len(chapters) == 1 and chapters[0]["title"] == "第一章"
+    chars = client.get(f"/api/projects/{new_id}/settings/characters").json()
+    assert len(chars) == 1 and chars[0]["name"] == "林玄"
+    foreshadows = client.get(f"/api/projects/{new_id}/settings/foreshadows").json()
+    assert len(foreshadows) == 1 and foreshadows[0]["status"] == "planted"
+    assert foreshadows[0]["plant_chapter_id"] == chapters[0]["id"], "伏笔章节引用应保留"
+    # 知识文档走 ingest 重建（新 id）
+    r = client.post(f"/api/knowledge/search?project_id={new_id}", json={"query": "修仙境界", "top_k": 5})
+    assert r.status_code == 200
+    assert any(d["title"] == "修仙境界" for d in (r.json().get("docs") or [])), r.text
+
+    # 原项目不受影响
+    assert len(client.get(f"/api/projects/{project}/settings/characters").json()) == 1
+
+
+def test_run_retry_creates_new_run(client, project):
+    """N 轮：POST /api/agents/runs/{id}/retry 重建 state 重跑并产生新 run"""
+    r = client.post("/api/agents/run", json={"graph": "chat", "project_id": project, "task": "写第一章"})
+    assert r.status_code == 200
+    before = client.get(f"/api/agents/runs?project_id={project}").json()
+    source_id = before[0]["id"]
+    r = client.post(f"/api/agents/runs/{source_id}/retry")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["retried"] is True and body["graph"] == "chat" and body["source_run_id"] == source_id
+    # 路由到 chapter 时 final_output 为 saved 信息；qa 时为 content
+    assert body["result"].get("saved") is True or body["result"].get("content"), body["result"]
+    after = client.get(f"/api/agents/runs?project_id={project}").json()
+    assert len(after) == len(before) + 1, "重试应产生新 run"
+
+
+def test_settings_audit_scans_all_modules(client, project):
+    """N 轮：POST /api/projects/{id}/settings/audit 全项目体检"""
+    client.post(f"/api/projects/{project}/settings/world", json={"name": "九州", "category": "geography", "content": "大陆中央有天玄山"})
+    client.post(f"/api/projects/{project}/settings/characters", json={"name": "林玄", "role": "protagonist", "background": "来自天玄山的少年"})
+    r = client.post(f"/api/projects/{project}/settings/audit")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["checked"] >= 2, body
+    assert isinstance(body["issues"], list)
+    assert "summary" in body and "is_mock" in body
+
+
 def test_runtime_config_endpoint(client):
     """J3: /api/runtime/config 返回脱敏有效配置"""
     r = client.get("/api/runtime/config")
