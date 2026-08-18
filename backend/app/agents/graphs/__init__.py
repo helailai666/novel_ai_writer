@@ -22,6 +22,7 @@ from app.agents.nodes.setting_nodes import (
     generate_location,
     generate_outline,
     generate_skill,
+    generate_timeline,
     generate_world,
     persist_setting,
     route_kind,
@@ -38,6 +39,7 @@ _KIND_NODES = {
     "faction": generate_faction,
     "location": generate_location,
     "outline": generate_outline,
+    "timeline": generate_timeline,  # M 轮：时间线事件
 }
 
 

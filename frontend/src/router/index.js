@@ -82,6 +82,18 @@ const routes = [
         meta: { title: 'AI 对话' }
       },
       {
+        path: 'timeline',
+        name: 'ProjectTimeline',
+        component: () => import('@/views/TimelineView.vue'),
+        meta: { title: '时间线' }
+      },
+      {
+        path: 'foreshadows',
+        name: 'ProjectForeshadows',
+        component: () => import('@/views/ForeshadowView.vue'),
+        meta: { title: '伏笔' }
+      },
+      {
         path: 'runs',
         name: 'ProjectRuns',
         component: () => import('@/views/RunsView.vue'),

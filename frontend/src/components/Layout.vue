@@ -150,6 +150,7 @@ import {
   TimeOutline,
   RibbonOutline,
   ChatbubblesOutline,
+  FlagOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -212,6 +213,8 @@ const breadcrumbs = computed(() => {
       else if (paths[2] === 'knowledge') items.push({ label: '📚 知识库' })
       else if (paths[2] === 'memes') items.push({ label: '😂 热梗库' })
       else if (paths[2] === 'chat') items.push({ label: '💬 AI 对话' })
+      else if (paths[2] === 'timeline') items.push({ label: '🕐 时间线' })
+      else if (paths[2] === 'foreshadows') items.push({ label: '🎯 伏笔管理' })
       else if (paths[2] === 'runs') items.push({ label: '🕐 运行记录' })
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
@@ -260,6 +263,16 @@ const projectMenuOptions = computed(() => {
       label: '模块设定',
       key: `/projects/${id}/settings`,
       icon: renderIcon(SettingsOutline),
+    },
+    {
+      label: '时间线',
+      key: `/projects/${id}/timeline`,
+      icon: renderIcon(TimeOutline),
+    },
+    {
+      label: '伏笔管理',
+      key: `/projects/${id}/foreshadows`,
+      icon: renderIcon(FlagOutline),
     },
     {
       label: '审核视图',

@@ -200,6 +200,35 @@ def test_export_json_full_backup(client, project):
                          "locations", "outlines", "world_settings", "foreshadows", "knowledge_docs", "hot_memes"}
 
 
+def test_timeline_and_foreshadow_management(client, project):
+    """M 轮：时间线 AI 生成 + CRUD/PATCH；伏笔 CRUD + 状态流转"""
+    # 时间线 AI 生成（mock 模式）
+    r = client.post(f"/api/projects/{project}/settings/ai/generate-timeline",
+                    json={"name": "魔潮降临", "category": "上古", "extra": ""})
+    assert r.status_code == 200
+    assert r.json()["is_mock"] is True and r.json()["content"]
+    tl = client.get(f"/api/projects/{project}/settings/timelines").json()
+    assert len(tl) == 1 and tl[0]["event"] == "魔潮降临" and tl[0]["era"] == "上古"
+    # PATCH 时间线
+    r = client.patch(f"/api/projects/{project}/settings/timelines/{tl[0]['id']}",
+                     json={"event_date": "天启元年", "involved_characters": "云破天"})
+    assert r.status_code == 200 and r.json()["event_date"] == "天启元年"
+
+    # 伏笔 CRUD + 状态流转（planted → revealed）
+    ch = client.post(f"/api/projects/{project}/writing/chapters",
+                     json={"title": "第一章", "content": "内容", "chapter_number": 1}).json()
+    f = client.post(f"/api/projects/{project}/settings/foreshadows",
+                    json={"description": "玉佩发光", "plant_chapter_id": ch["id"], "status": "planted"}).json()
+    assert f["status"] == "planted" and f["plant_chapter_id"] == ch["id"]
+    r = client.patch(f"/api/projects/{project}/settings/foreshadows/{f['id']}",
+                     json={"status": "revealed", "reveal_chapter_id": ch["id"]})
+    assert r.status_code == 200 and r.json()["status"] == "revealed"
+
+    # 删除
+    assert client.delete(f"/api/projects/{project}/settings/timelines/{tl[0]['id']}").status_code == 204
+    assert client.delete(f"/api/projects/{project}/settings/foreshadows/{f['id']}").status_code == 204
+
+
 def test_runtime_config_endpoint(client):
     """J3: /api/runtime/config 返回脱敏有效配置"""
     r = client.get("/api/runtime/config")

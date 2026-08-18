@@ -58,6 +58,35 @@ async def test_setting_graph_generates_and_persists(db, mock_llm):
     assert len(rows) == 1 and rows[0].name == "九州大陆"
 
 
+# ── setting 图：timeline kind（M 轮）──────────────────────────────
+
+async def test_setting_graph_generates_timeline(db, mock_llm):
+    """M 轮：setting 图 kind=timeline 生成事件并落到 timelines 表"""
+    from app.agents.runner import get_runner
+
+    state = {
+        "graph": "setting", "project_id": db, "task": "生成时间线事件",
+        "kind": "timeline", "name": "天玄门立宗之战", "category": "上古", "extra": "涉及主角师尊",
+        "settings_snapshot": {}, "knowledge": [], "draft": None,
+        "review": {}, "reviews": [], "revision_round": 0,
+        "max_revisions": 2, "review_threshold": 75,
+        "final_output": {}, "events": [], "run_id": None,
+    }
+    result = await get_runner().ainvoke("setting", state)
+    assert result.get("content"), "时间线图应产出描述"
+    assert result.get("is_mock") is True
+    assert result.get("saved") is True, "应落库"
+
+    from sqlalchemy import select
+    from app.database import async_session_factory
+    from app.models.timeline import Timeline
+
+    async with async_session_factory() as session:
+        rows = (await session.execute(select(Timeline).where(Timeline.project_id == db))).scalars().all()
+    assert len(rows) == 1 and rows[0].event == "天玄门立宗之战" and rows[0].era == "上古"
+    assert rows[0].description == result.get("content"), "description 应为生成内容"
+
+
 # ── chapter 图：重写循环 ──────────────────────────────────────────
 
 async def test_chapter_graph_rewrite_loop(db, mock_llm):

@@ -140,6 +140,11 @@ class SettingService:
         return await _run_setting_graph(project_id, "location", name, category, extra=extra)
 
     @staticmethod
+    async def ai_generate_timeline(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
+        """AI 生成时间线事件（M 轮）：setting 图 kind=timeline"""
+        return await _run_setting_graph(project_id, "timeline", name, category, extra=extra)
+
+    @staticmethod
     async def ai_generate_outline(db: AsyncSession, project_id: str, name: str, category: str, extra: str = "") -> dict:
         return await _run_setting_graph(project_id, "outline", name, category, extra=extra)
 

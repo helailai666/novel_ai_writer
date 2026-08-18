@@ -127,6 +127,16 @@ def build_world_task(name: str, category: str) -> str:
     return f"为小说生成世界观设定：「{name}」\n类别: {category}\n{extra}\n\n请输出结构化的设定内容，使用标题和分段。"
 
 
+def build_timeline_task(name: str, era: str, extra: str = "") -> str:
+    """时间线事件生成任务（M 轮）"""
+    return (
+        f"为小说生成一条时间线事件：「{name}」\n时代/纪元: {era or 'present'}\n"
+        f"{extra or ''}\n\n"
+        f"请输出这段事件的具体描述（发生了什么、前因后果、对剧情的影响），"
+        f"并说明涉及的主要角色。保持与作品世界观一致，输出中文。"
+    )
+
+
 def build_character_task(name: str, role: str) -> str:
     role_descs = {
         "protagonist": "主角，需要有完整的成长弧光和复杂性格",

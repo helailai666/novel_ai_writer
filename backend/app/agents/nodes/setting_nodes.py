@@ -17,6 +17,7 @@ from app.agents.nodes.common import (
     build_location_task,
     build_outline_task,
     build_skill_task,
+    build_timeline_task,
     build_world_task,
     enhance_system,
     is_mock_provider,
@@ -36,6 +37,7 @@ from app.models.location import Location
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.skill import Skill
+from app.models.timeline import Timeline
 from app.models.world_setting import WorldSetting
 
 logger = logging.getLogger(__name__)
@@ -157,6 +159,14 @@ async def generate_outline(state: NovelState) -> dict:
     return await _generate(state, build_outline_task(name, level), "generate_outline")
 
 
+async def generate_timeline(state: NovelState) -> dict:
+    """时间线事件生成（M 轮）"""
+    name = state.get("name") or "未命名事件"
+    era = state.get("category") or "present"
+    extra = state.get("extra") or ""
+    return await _generate(state, build_timeline_task(name, era, extra), "generate_timeline")
+
+
 async def consistency_check(state: NovelState) -> dict:
     """设定一致性预检（P3 接入 setting_query 工具后增强；当前为占位）"""
     return {"events": [events.node_start("consistency_check"), events.node_end("consistency_check")]}
@@ -182,6 +192,7 @@ async def persist_setting(state: NovelState) -> dict:
                 "faction": (Faction, {"name": name, "type": category, "goal": content}),
                 "location": (Location, {"name": name, "category": category, "description": content}),
                 "outline": (Outline, {"title": name, "summary": content}),
+                "timeline": (Timeline, {"event": name[:300], "era": category or "present", "description": content}),
             }
             model, fields = model_map[kind]
             obj = model(project_id=state["project_id"], **fields)

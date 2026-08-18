@@ -29,10 +29,13 @@ _SETTING_KINDS = {
     "势力": "faction", "宗门": "faction", "组织": "faction",
     "地点": "location", "场景": "location", "地图": "location",
     "大纲": "outline", "剧情大纲": "outline",
+    "时间线": "timeline", "纪事": "timeline",  # M 轮
 }
 _REVIEW_KEYWORDS = ("审核", "检查", "评估", "评分", "审校", "一致性", "连贯", "伏笔管理")
 # K 轮：知识问答关键词（选较明确的提问词，避免"怎么/哪些"误伤写作/设定意图）
 _QA_KEYWORDS = ("是什么", "什么是", "介绍一下", "有哪些", "讲讲", "说说", "为什么", "解释", "查询", "检索")
+# M 轮：时间线关键词（优先于普通设定关键词，防"宗门大比"类误匹配）
+_TIMELINE_KEYWORDS = ("时间线", "纪事")
 _WRITE_KEYWORDS = ("写", "生成", "创作", "续写", "润色", "章", "正文", "故事")
 
 _VALID_INTENTS = {"review", "setting", "chapter", "qa"}
@@ -43,7 +46,7 @@ _CLASSIFY_SYSTEM = """你是小说创作平台的意图分类器。根据用户�
 - setting: 生成/设计世界观设定（世界观/角色/道具/技能/势力/地点/大纲）
 - chapter: 写作/续写/润色章节正文
 - qa: 知识问答（询问设定/知识库内容，如"境界怎么划分""有哪些角色"）
-只输出 JSON：{"intent": "review|setting|chapter|qa", "kind": "world|character|item|skill|faction|location|outline|null"}。
+只输出 JSON：{"intent": "review|setting|chapter|qa", "kind": "world|character|item|skill|faction|location|outline|timeline|null"}。
 kind 仅在 intent=setting 时填写，其余为 null。"""
 
 # 分类结果缓存（H1 成本门控）：相同任务文本免重复 LLM 调用
@@ -58,13 +61,15 @@ def _classify_key(task: str) -> str:
 def classify(task: str) -> tuple[str, dict]:
     """关键词分类（确定性回退）→ (intent, 补丁字段)
 
-    顺序：审核意图优先 > 知识问答 > 设定意图 > 写作意图
+    顺序：审核意图优先 > 知识问答 > 时间线 > 设定意图 > 写作意图
     """
     task = task or ""
     if any(k in task for k in _REVIEW_KEYWORDS):
         return "review", {}
     if any(k in task for k in _QA_KEYWORDS):
         return "qa", {}
+    if any(k in task for k in _TIMELINE_KEYWORDS):
+        return "setting", {"kind": "timeline"}
     for kw, kind in _SETTING_KINDS.items():
         if kw in task:
             return "setting", {"kind": kind}

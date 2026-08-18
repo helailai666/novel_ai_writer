@@ -341,6 +341,16 @@ async def test_chapter_history_injection(recording_llm, db):
 
 # ── K 轮 supervisor qa 意图 ───────────────────────────────────────
 
+def test_supervisor_timeline_keyword():
+    """M 轮：时间线关键词 → setting + kind=timeline"""
+    from app.agents.graphs.supervisor import classify
+
+    intent, patch = classify("帮我生成一条时间线事件")
+    assert intent == "setting" and patch["kind"] == "timeline", (intent, patch)
+    intent, patch = classify("补充一条纪事：宗门大比")
+    assert intent == "setting" and patch["kind"] == "timeline"
+
+
 def test_supervisor_qa_keyword_fallback():
     """知识问答关键词回退：明确提问词 → qa；不误伤写作/设定意图"""
     from app.agents.graphs.supervisor import classify

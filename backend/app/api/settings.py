@@ -119,6 +119,25 @@ class ForeshadowCreate(BaseModel):
     related_characters: str = ""
 
 
+class TimelineUpdate(BaseModel):
+    """时间线事件更新（M 轮：全可选，PATCH 部分字段）"""
+    event: Optional[str] = Field(None, max_length=300)
+    era: Optional[str] = Field(None, max_length=100)
+    event_date: Optional[str] = None
+    sort_order: Optional[int] = None
+    description: Optional[str] = None
+    involved_characters: Optional[str] = None
+
+
+class ForeshadowUpdate(BaseModel):
+    """伏笔更新（M 轮：全可选，含状态流转）"""
+    description: Optional[str] = None
+    plant_chapter_id: Optional[str] = None
+    reveal_chapter_id: Optional[str] = None
+    status: Optional[str] = Field(None, max_length=20)
+    related_characters: Optional[str] = None
+
+
 class AIGenerateRequest(BaseModel):
     """AI 生成请求"""
     name: str = Field(..., max_length=200, description="名称")
@@ -284,6 +303,12 @@ async def list_timelines(project_id: str, db: AsyncSession = Depends(get_db)):
     return await SettingService.list(db, project_id, "timelines")
 
 
+@router.patch("/timelines/{timeline_id}")
+async def update_timeline(project_id: str, timeline_id: str, payload: TimelineUpdate, db: AsyncSession = Depends(get_db)):
+    """更新时间线事件（M 轮）"""
+    return await SettingService.update(db, project_id, "timelines", timeline_id, payload.model_dump(exclude_unset=True))
+
+
 @router.delete("/timelines/{timeline_id}", status_code=204)
 async def delete_timeline(project_id: str, timeline_id: str, db: AsyncSession = Depends(get_db)):
     await SettingService.delete(db, project_id, "timelines", timeline_id)
@@ -299,6 +324,12 @@ async def create_foreshadow(project_id: str, payload: ForeshadowCreate, db: Asyn
 @router.get("/foreshadows")
 async def list_foreshadows(project_id: str, db: AsyncSession = Depends(get_db)):
     return await SettingService.list(db, project_id, "foreshadows")
+
+
+@router.patch("/foreshadows/{foreshadow_id}")
+async def update_foreshadow(project_id: str, foreshadow_id: str, payload: ForeshadowUpdate, db: AsyncSession = Depends(get_db)):
+    """更新伏笔（含 planted→revealed 状态流转，M 轮）"""
+    return await SettingService.update(db, project_id, "foreshadows", foreshadow_id, payload.model_dump(exclude_unset=True))
 
 
 @router.delete("/foreshadows/{foreshadow_id}", status_code=204)
@@ -336,6 +367,12 @@ async def ai_generate_faction(project_id: str, payload: AIGenerateRequest, db: A
 @router.post("/ai/generate-location", response_model=AIGenerateResponse)
 async def ai_generate_location(project_id: str, payload: AIGenerateRequest, db: AsyncSession = Depends(get_db)):
     return await SettingService.ai_generate_location(db, project_id, payload.name, payload.category, payload.extra)
+
+
+@router.post("/ai/generate-timeline", response_model=AIGenerateResponse)
+async def ai_generate_timeline(project_id: str, payload: AIGenerateRequest, db: AsyncSession = Depends(get_db)):
+    """AI 生成时间线事件（M 轮）"""
+    return await SettingService.ai_generate_timeline(db, project_id, payload.name, payload.category, payload.extra)
 
 
 @router.post("/ai/generate-outline", response_model=AIGenerateResponse)

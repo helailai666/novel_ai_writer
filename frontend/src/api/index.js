@@ -202,6 +202,9 @@ export const settingsAPI = {
   createTimeline(projectId, data) {
     return http.post(`/projects/${projectId}/settings/timelines`, data)
   },
+  updateTimeline(projectId, timelineId, data) {
+    return http.patch(`/projects/${projectId}/settings/timelines/${timelineId}`, data)
+  },
   deleteTimeline(projectId, timelineId) {
     return http.delete(`/projects/${projectId}/settings/timelines/${timelineId}`)
   },
@@ -211,6 +214,9 @@ export const settingsAPI = {
   },
   createForeshadow(projectId, data) {
     return http.post(`/projects/${projectId}/settings/foreshadows`, data)
+  },
+  updateForeshadow(projectId, foreshadowId, data) {
+    return http.patch(`/projects/${projectId}/settings/foreshadows/${foreshadowId}`, data)
   },
   deleteForeshadow(projectId, foreshadowId) {
     return http.delete(`/projects/${projectId}/settings/foreshadows/${foreshadowId}`)
@@ -239,6 +245,9 @@ export const aiGenerateAPI = {
   },
   generateOutline(projectId, data) {
     return http.post(`/projects/${projectId}/settings/ai/generate-outline`, data)
+  },
+  generateTimeline(projectId, data) {
+    return http.post(`/projects/${projectId}/settings/ai/generate-timeline`, data)
   }
 }
 
