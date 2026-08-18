@@ -358,6 +358,9 @@ export const agentsAPI = {
   },
   listRuns(params) {
     return http.get('/agents/runs', { params })
+  },
+  getRun(runId) {
+    return http.get(`/agents/runs/${runId}`)
   }
 }
 

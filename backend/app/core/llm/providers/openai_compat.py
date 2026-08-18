@@ -30,7 +30,23 @@ def _to_lc_messages(messages: list[LLMMessage]) -> list:
         elif m.role == "tool":
             lc.append(ToolMessage(content=m.content, tool_call_id=m.tool_call_id or ""))
         elif m.role == "assistant":
-            lc.append(AIMessage(content=m.content, tool_calls=m.tool_calls))
+            tool_calls = None
+            if m.tool_calls:
+                # 我们的 ToolCall {id, name, arguments} → langchain {id, name, args, type}
+                tool_calls = []
+                for tc in m.tool_calls:
+                    if isinstance(tc, dict):
+                        tool_calls.append({
+                            "id": tc.get("id", ""),
+                            "name": tc.get("name", ""),
+                            "args": tc.get("arguments", tc.get("args", {})),
+                            "type": "tool_call",
+                        })
+                    else:
+                        tool_calls.append({
+                            "id": tc.id, "name": tc.name, "args": tc.arguments, "type": "tool_call",
+                        })
+            lc.append(AIMessage(content=m.content, tool_calls=tool_calls))
         else:
             lc.append(HumanMessage(content=m.content, name=m.name))
     return lc
@@ -77,17 +93,32 @@ class OpenAICompatProvider(LLMProvider):
         tool_calls = []
         raw_tool_calls = getattr(resp, "tool_calls", None) or []
         for tc in raw_tool_calls:
-            if getattr(tc, "type", "function") != "function":
-                continue
-            args = tc.get("function", {}).get("arguments", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
-            name = tc.get("function", {}).get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
-            tool_calls.append(
-                ToolCall(
-                    id=tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", ""),
-                    name=name,
-                    arguments=args if isinstance(args, dict) else json.loads(args or "{}"),
-                )
-            )
+            # langchain AIMessage.tool_calls: dict {name, args, id, type}
+            # 兼容 OpenAI 原始 dict: {id, type: "function", function: {name, arguments}}
+            if isinstance(tc, dict):
+                if tc.get("type") not in (None, "function", "tool_call"):
+                    continue
+                fn = tc.get("function") or {}
+                name = tc.get("name") or fn.get("name") or ""
+                args = tc.get("args") if "args" in tc else fn.get("arguments", {})
+                tc_id = tc.get("id", "")
+            else:
+                if getattr(tc, "type", "function") not in ("function", "tool_call"):
+                    continue
+                name = getattr(tc, "name", "") or ""
+                args = getattr(tc, "args", None)
+                if args is None:
+                    fn = getattr(tc, "function", None)
+                    args = getattr(fn, "arguments", {}) if fn else {}
+                tc_id = getattr(tc, "id", "") or ""
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args or "{}")
+                except Exception:
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+            tool_calls.append(ToolCall(id=tc_id, name=name, arguments=args))
         usage = {}
         um = getattr(resp, "usage_metadata", None)
         if um:

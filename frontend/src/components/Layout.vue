@@ -147,6 +147,7 @@ import {
   ListOutline,
   StatsChartOutline,
   HappyOutline,
+  TimeOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -208,6 +209,7 @@ const breadcrumbs = computed(() => {
       else if (paths[2] === 'dashboard') items.push({ label: '📊 仪表盘' })
       else if (paths[2] === 'knowledge') items.push({ label: '📚 知识库' })
       else if (paths[2] === 'memes') items.push({ label: '😂 热梗库' })
+      else if (paths[2] === 'runs') items.push({ label: '🕐 运行记录' })
     } else if (paths[1] === 'new') {
       items.push({ label: '➕ 新建项目' })
     }
@@ -286,6 +288,11 @@ const projectMenuOptions = computed(() => {
   label: '热梗库',
   key: `/projects/${id}/memes`,
   icon: renderIcon(HappyOutline),
+  },
+  {
+  label: '运行记录',
+  key: `/projects/${id}/runs`,
+  icon: renderIcon(TimeOutline),
   },
   ]
 })

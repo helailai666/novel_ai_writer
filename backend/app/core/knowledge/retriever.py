@@ -34,6 +34,9 @@ class Retriever:
         include_memes: bool = True,
     ) -> dict:
         """返回 {"docs": [...], "memes": [...], "source": "hybrid|keyword"}"""
+        # LLM 工具调用可能把单值数组传成字符串（"worldview"）→ 归一化
+        if isinstance(categories, str):
+            categories = [categories]
         keyword_docs = await self._keyword_docs(query, project_id, categories)
         keyword_memes = await self._keyword_memes(query, project_id) if include_memes else []
 

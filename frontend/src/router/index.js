@@ -74,6 +74,12 @@ const routes = [
         name: 'ProjectMemes',
         component: () => import('@/views/HotMemesView.vue'),
         meta: { title: '热梗库' }
+      },
+      {
+        path: 'runs',
+        name: 'ProjectRuns',
+        component: () => import('@/views/RunsView.vue'),
+        meta: { title: '运行记录' }
       }
     ]
   },

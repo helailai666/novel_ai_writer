@@ -24,6 +24,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[MCP] 桥接跳过: {e}", flush=True)
     yield
+    # 关闭 MCP 外部连接池（结束子进程/SSE 连接）
+    try:
+        from app.core.mcp.client import close_all_pools
+
+        await close_all_pools()
+    except Exception as e:
+        print(f"[MCP] 连接池关闭异常: {e}", flush=True)
 
 
 # ── 创建应用 ─────────────────────────────────────────────────────

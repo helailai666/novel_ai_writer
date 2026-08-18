@@ -76,6 +76,7 @@ class AgentSettings(BaseModel):
     review_threshold: int = 75      # 低于该分触发 rewrite
     streaming: bool = True
     persist_runs: bool = True       # 是否写入 agent_runs 表
+    llm_supervisor: bool = True     # chat 图意图分类：True=LLM 优先（失败回退关键词）
 
 
 # ── 顶层 Settings（扁平环境变量） ──────────────────────────────────
@@ -92,7 +93,7 @@ class Settings(BaseSettings):
 
     # ── 服务 ──────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = 18000
     LOG_LEVEL: str = "INFO"
     DEBUG: bool = False
 
@@ -138,6 +139,7 @@ class Settings(BaseSettings):
     AGENT_REVIEW_THRESHOLD: int = 75
     AGENT_STREAMING: bool = True
     AGENT_PERSIST_RUNS: bool = True
+    AGENT_LLM_SUPERVISOR: bool = True
 
     # ── MCP ───────────────────────────────────────────────────────
     MCP_ENABLED: bool = True
@@ -193,6 +195,7 @@ class Settings(BaseSettings):
             review_threshold=self.AGENT_REVIEW_THRESHOLD,
             streaming=self.AGENT_STREAMING,
             persist_runs=self.AGENT_PERSIST_RUNS,
+            llm_supervisor=self.AGENT_LLM_SUPERVISOR,
         )
         if self.DEBUG:
             self.LOG_LEVEL = "DEBUG"

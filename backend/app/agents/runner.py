@@ -40,6 +40,12 @@ class GraphRunner:
         if self.persist_runs:
             run_id = await self._create_run(graph_name, state)
 
+        # G4: 压缩时间线（token 事件只计数，其余事件保留结构）
+        timeline: list[dict] = []
+        token_counts: dict[str, int] = {}
+        total_tokens = 0
+        active_node: Optional[str] = None
+
         final: dict = {}
         try:
             async for mode, chunk in app.astream(state, stream_mode=["updates"]):
@@ -51,16 +57,38 @@ class GraphRunner:
                     if update.get("final_output"):
                         final = update["final_output"]
                     for ev in update.get("events") or []:
+                        etype = ev.get("type")
+                        if etype == "token":
+                            total_tokens += 1
+                            token_counts[active_node] = token_counts.get(active_node, 0) + 1
+                        else:
+                            if etype == "node_start":
+                                active_node = ev.get("node")
+                            elif etype == "node_end":
+                                active_node = None
+                            if len(timeline) < 300:
+                                record = dict(ev)
+                                if etype == "tool_call" and isinstance(record.get("args"), dict):
+                                    record["args"] = {k: str(v)[:200] for k, v in list(record["args"].items())[:5]}
+                                timeline.append(record)
                         yield ev
             # 终态
             yield events.done(final or {}, run_id)
             if self.persist_runs and run_id:
-                await self._finish_run(run_id, final, status="completed")
+                events_data = json.dumps(
+                    {"events": timeline, "token_counts": token_counts, "total_tokens": total_tokens},
+                    ensure_ascii=False, default=str,
+                )
+                await self._finish_run(run_id, final, status="completed", events_data=events_data)
         except Exception as e:
             logger.error(f"graph '{graph_name}' run failed: {e}")
             yield events.error(str(e))
             if self.persist_runs and run_id:
-                await self._finish_run(run_id, {"error": str(e)}, status="failed")
+                events_data = json.dumps(
+                    {"events": timeline, "token_counts": token_counts, "total_tokens": total_tokens},
+                    ensure_ascii=False, default=str,
+                )
+                await self._finish_run(run_id, {"error": str(e)}, status="failed", events_data=events_data)
             return
 
     async def ainvoke(self, graph_name: str, state: NovelState) -> dict:
@@ -96,7 +124,7 @@ class GraphRunner:
             logger.warning(f"create agent_run failed: {e}")
             return None
 
-    async def _finish_run(self, run_id: str, final: dict, status: str) -> None:
+    async def _finish_run(self, run_id: str, final: dict, status: str, events_data: str = "") -> None:
         try:
             from sqlalchemy import select
 
@@ -109,6 +137,8 @@ class GraphRunner:
                 if run:
                     run.status = status
                     run.output_data = json.dumps(final, ensure_ascii=False, default=str)
+                    if events_data:
+                        run.events_data = events_data
                     await db.commit()
         except Exception as e:
             logger.warning(f"finish agent_run failed: {e}")

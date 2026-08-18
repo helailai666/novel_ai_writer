@@ -21,6 +21,24 @@ _SUBPROC_ENV = {
 }
 
 
+@pytest.fixture(autouse=True)
+async def _close_mcp_pools():
+    """每个测试后关闭外部 MCP 连接池并注销桥接工具
+
+    连接池不复用会遗留 stdio 子进程、拖住事件循环退出；桥接工具不注销
+    会污染全局注册表（影响 /api/tools 数量等顺序相关断言）。
+    """
+    yield
+    from app.core.mcp.client import close_all_pools
+    from app.core.tools.registry import get_registry
+
+    registry = get_registry()
+    for t in registry.get_all():
+        if t.name.startswith("mcp_"):
+            registry.unregister(t.name)
+    await close_all_pools()
+
+
 async def test_mcp_server_exposes_real_tools(db, test_db_url):
     """MCP 服务端：stdio 握手 → 工具列表含真实工具 → 调用 project_summary 返回真实数据"""
     from mcp import ClientSession, StdioServerParameters
@@ -75,7 +93,7 @@ async def test_mcp_client_bridges_external_server(tmp_path):
     assert registry.get("mcp_fake_echo").description.startswith("[MCP:fake]")
 
 
-async def test_bridged_external_tool_used_by_writer(tmp_path, db):
+async def test_bridged_external_tool_used_by_writer(tmp_path, db, monkeypatch):
     """外部 MCP 工具桥接后，写作图 ReAct 工具循环可真实调用它"""
     import app.agents.nodes.common as common
     from app.core.llm.providers.mock import MockProvider
@@ -111,7 +129,6 @@ async def test_bridged_external_tool_used_by_writer(tmp_path, db):
     def _create(*args, **kwargs):
         return fake
 
-    monkeypatch = __import__("pytest").MonkeyPatch()
     monkeypatch.setattr(common, "create", _create)
 
     # 3) 跑写作图
@@ -134,3 +151,64 @@ async def test_bridged_external_tool_used_by_writer(tmp_path, db):
     assert any(e["tool"] == "mcp_fake2_echo" for e in tool_calls), "writer 应调用桥接的外部 MCP 工具"
     done = [e for e in events_list if e["type"] == "done"][-1]
     assert done["result"].get("saved") is True
+
+
+# ── G3 连接池 ─────────────────────────────────────────────────────
+
+def _counting_connect(monkeypatch, counter):
+    """monkeypatch _connect 为计数版本，返回原实现"""
+    import app.core.mcp.client as mcp_client
+
+    orig = mcp_client.McpConnectionPool._connect
+
+    async def counting_connect(self):
+        counter["n"] += 1
+        return await orig(self)
+
+    monkeypatch.setattr(mcp_client.McpConnectionPool, "_connect", counting_connect)
+    return counter
+
+
+async def test_mcp_pool_reuses_session(tmp_path, monkeypatch):
+    """连接池复用：工具发现 + 多次调用只建连一次"""
+    from app.core.mcp.client import bridge_mcp_server
+    from app.core.tools.registry import get_registry
+
+    counter = _counting_connect(monkeypatch, {"n": 0})
+    server_file = tmp_path / "fake_mcp_server3.py"
+    server_file.write_text(FAKE_MCP_SERVER, encoding="utf-8")
+    cfg = {"name": "fake3", "transport": "stdio", "command": sys.executable, "args": [str(server_file)]}
+
+    registry = get_registry()
+    await bridge_mcp_server(cfg, registry)
+    assert counter["n"] == 1, "工具发现阶段应建连一次"
+
+    r1 = await registry.execute("mcp_fake3_echo", {"text": "a"})
+    r2 = await registry.execute("mcp_fake3_echo", {"text": "b"})
+    assert r1.ok and r2.ok and "echo:a" in r1.content and "echo:b" in r2.content
+    assert counter["n"] == 1, "多次调用应复用同一会话，不重建连接"
+
+
+async def test_mcp_pool_reconnects_after_session_death(tmp_path, monkeypatch):
+    """会话失效后自动重连一次并成功"""
+    from app.core.mcp.client import bridge_mcp_server, get_pool
+    from app.core.tools.registry import get_registry
+
+    counter = _counting_connect(monkeypatch, {"n": 0})
+    server_file = tmp_path / "fake_mcp_server4.py"
+    server_file.write_text(FAKE_MCP_SERVER, encoding="utf-8")
+    cfg = {"name": "fake4", "transport": "stdio", "command": sys.executable, "args": [str(server_file)]}
+
+    registry = get_registry()
+    await bridge_mcp_server(cfg, registry)
+    pool = get_pool(cfg)
+    assert counter["n"] == 1
+
+    await registry.execute("mcp_fake4_echo", {"text": "a"})
+    assert counter["n"] == 1
+
+    # 模拟会话死亡（直接销毁底层连接）
+    await pool._disconnect()
+    r = await registry.execute("mcp_fake4_echo", {"text": "b"})
+    assert r.ok and "echo:b" in r.content
+    assert counter["n"] == 2, "会话失效后应自动重连一次"

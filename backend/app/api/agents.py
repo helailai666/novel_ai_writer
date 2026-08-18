@@ -83,10 +83,29 @@ class AgentRunResponse(BaseModel):
     graph_name: str
     project_id: Optional[str]
     status: str
+    summary: str = ""
     input_data: str = ""
     output_data: str = ""
+    duration_seconds: float = 0.0
     created_at: str = ""
     updated_at: str = ""
+
+
+def _run_summary(output_data: str) -> str:
+    """从 output_data 提取摘要（content 前缀 / error）"""
+    if not output_data:
+        return ""
+    try:
+        data = json.loads(output_data)
+    except Exception:
+        return output_data[:120]
+    if isinstance(data, dict):
+        if data.get("error"):
+            return f"错误: {str(data['error'])[:120]}"
+        content = data.get("content") or ""
+        if content:
+            return str(content)[:120]
+    return output_data[:120]
 
 
 # ── 路由 ─────────────────────────────────────────────────────────
@@ -123,16 +142,19 @@ async def agent_run(payload: AgentChatRequest):
 async def list_runs(
     project_id: Optional[str] = Query(None),
     graph: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    """查询图运行记录"""
+    """查询图运行记录（列表视图：不含完整事件时间线）"""
     stmt = select(AgentRun).order_by(AgentRun.created_at.desc())
     if project_id:
         stmt = stmt.where(AgentRun.project_id == project_id)
     if graph:
         stmt = stmt.where(AgentRun.graph_name == graph)
+    if status:
+        stmt = stmt.where(AgentRun.status == status)
     stmt = stmt.limit(limit).offset(offset)
     result = await db.execute(stmt)
     runs = result.scalars().all()
@@ -142,10 +164,54 @@ async def list_runs(
             graph_name=r.graph_name,
             project_id=r.project_id,
             status=r.status,
-            input_data=r.input_data,
-            output_data=r.output_data,
+            summary=_run_summary(r.output_data),
+            duration_seconds=_run_duration(r),
             created_at=r.created_at.isoformat() if r.created_at else "",
             updated_at=r.updated_at.isoformat() if r.updated_at else "",
         )
         for r in runs
     ]
+
+
+def _run_duration(r) -> float:
+    """运行时长（秒）；running 状态按当前时间估算"""
+    end = r.updated_at or r.created_at
+    if r.status == "running":
+        import datetime
+
+        end = datetime.datetime.utcnow()
+    if not r.created_at or not end:
+        return 0.0
+    return round((end - r.created_at).total_seconds(), 2)
+
+
+@router.get("/runs/{run_id}")
+async def get_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    """运行记录详情：输入/输出 + 压缩事件时间线（G4 可视化）"""
+    from fastapi import HTTPException
+
+    result = await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="运行记录不存在")
+    parsed: dict = {}
+    if run.events_data:
+        try:
+            parsed = json.loads(run.events_data)
+        except Exception:
+            parsed = {}
+    return {
+        "id": run.id,
+        "graph_name": run.graph_name,
+        "project_id": run.project_id,
+        "status": run.status,
+        "summary": _run_summary(run.output_data),
+        "input_data": run.input_data,
+        "output_data": run.output_data,
+        "duration_seconds": _run_duration(run),
+        "created_at": run.created_at.isoformat() if run.created_at else "",
+        "updated_at": run.updated_at.isoformat() if run.updated_at else "",
+        "events": parsed.get("events", []),
+        "token_counts": parsed.get("token_counts", {}),
+        "total_tokens": parsed.get("total_tokens", 0),
+    }

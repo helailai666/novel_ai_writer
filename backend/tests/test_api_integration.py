@@ -91,6 +91,32 @@ def test_agents_run_endpoints(client, project):
     assert len(r.json()) >= 2
 
 
+def test_agent_runs_timeline_and_detail(client, project):
+    """G4: 运行记录含摘要/时长，详情返回事件时间线"""
+    r = client.post("/api/agents/run", json={
+        "graph": "setting", "project_id": project, "task": "生成世界观",
+        "kind": "world", "name": "九州", "category": "geography",
+    })
+    assert r.status_code == 200
+
+    runs = client.get(f"/api/agents/runs?project_id={project}&graph=setting").json()
+    assert runs, "应存在 setting 运行记录"
+    run = runs[0]
+    assert run["status"] == "completed"
+    assert run["summary"], "列表应含运行摘要"
+    assert run["duration_seconds"] >= 0
+    # 列表视图不应携带完整事件（保持轻量）
+    assert "events" not in run
+
+    detail = client.get(f"/api/agents/runs/{run['id']}").json()
+    assert detail["id"] == run["id"]
+    assert any(e["type"] == "node_start" for e in detail["events"]), "详情应含节点事件"
+    assert detail["total_tokens"] >= 0
+    assert isinstance(detail["token_counts"], dict)
+    # 404
+    assert client.get("/api/agents/runs/nonexistent").status_code == 404
+
+
 def test_knowledge_and_memes_api(client, project):
     r = client.post("/api/knowledge/ingest", params={"title": "神兵", "content": "九天玄剑，剑身刻有九条龙纹。", "category": "item", "project_id": project})
     assert r.status_code == 200

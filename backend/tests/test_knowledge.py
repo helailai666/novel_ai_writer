@@ -36,6 +36,24 @@ async def test_knowledge_ingest_and_search(db):
     assert any("修仙境界" in d["title"] for d in (result2.get("docs") or []))
 
 
+async def test_retriever_accepts_string_categories(db):
+    """真实 LLM 常把单值数组参数传成字符串（"worldview"）→ 不应抛错"""
+    from app.database import async_session_factory
+    from app.services.knowledge_service import KnowledgeService
+
+    async with async_session_factory() as session:
+        await KnowledgeService.ingest_text(
+            session, "修仙境界", "练气→筑基→金丹→元婴→化神。", category="worldview", project_id=db,
+        )
+
+    # 字符串 categories（LLM 工具调用的常见形态）
+    result = await KnowledgeService.search("金丹", db, top_k=5, categories="worldview")
+    assert any("修仙境界" in d["title"] for d in (result.get("docs") or []))
+    # 列表 categories 仍正常
+    result2 = await KnowledgeService.search("金丹", db, top_k=5, categories=["worldview"])
+    assert any("修仙境界" in d["title"] for d in (result2.get("docs") or []))
+
+
 async def test_hot_meme_crud_and_search(db):
     from app.database import async_session_factory
     from app.services.knowledge_service import KnowledgeService

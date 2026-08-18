@@ -50,9 +50,9 @@ async def assemble_context(state: NovelState) -> dict:
             project = result.scalar_one_or_none()
             if project:
                 snapshot["project"] = {"title": project.title, "genre": project.genre, "synopsis": project.synopsis}
-            # 项目级技能（请求未显式指定时使用项目配置）
+            # 项目级技能（与请求级合并：None→项目级 / []→显式禁用 / 并集去重）
             project_skills = None
-            if project and project.skill_packs and not state.get("skills"):
+            if project and project.skill_packs:
                 project_skills = [s.strip() for s in project.skill_packs.split(",") if s.strip()]
             for model in (WorldSetting, Character, Item, Skill, Faction):
                 rows = (await db.execute(select(model).where(model.project_id == state["project_id"]))).scalars().all()
@@ -63,8 +63,12 @@ async def assemble_context(state: NovelState) -> dict:
     except Exception as e:  # 上下文加载失败不阻断生成
         logger.warning(f"assemble_context failed: {e}")
     ret: dict = {"settings_snapshot": snapshot, "events": evs}
-    if "project_skills" in locals() and project_skills:
-        ret["skills"] = project_skills
+    if "project_skills" in locals():
+        from app.agents.nodes.common import merge_skills
+
+        merged = merge_skills(state.get("skills"), project_skills)
+        if merged:
+            ret["skills"] = merged
     return ret
 
 

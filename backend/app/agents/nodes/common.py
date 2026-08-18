@@ -25,6 +25,25 @@ def is_mock_provider(llm: LLMProvider) -> bool:
     return isinstance(llm, MockProvider)
 
 
+def merge_skills(requested: Optional[list[str]], project: Optional[list[str]]) -> list[str]:
+    """合并请求级与项目级技能（G2 细化策略）
+
+    优先级模型：
+    - requested 为 None（未指定） → 仅用项目级技能
+    - requested 为空列表 []        → 显式禁用全部技能（覆盖项目级）
+    - requested 非空              → 请求级优先 + 项目级补齐（去重保序）
+    """
+    if requested is None:
+        return list(project or [])
+    if not requested:  # 显式空列表 → 禁用全部技能（覆盖项目级）
+        return []
+    result = list(requested)
+    for name in project or []:
+        if name and name not in result:
+            result.append(name)
+    return result
+
+
 def messages(system: str, user: str) -> list[LLMMessage]:
     return [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)]
 

@@ -48,11 +48,12 @@ async def retrieve_context(state: NovelState) -> dict:
             if proj:
                 snapshot["project"] = {"title": proj.title, "genre": proj.genre, "synopsis": proj.synopsis}
 
-            # 项目级技能（请求未显式指定时使用项目配置）
+            # 项目级技能（与请求级合并：None→项目级 / []→显式禁用 / 并集去重）
             project_skills = None
-            if proj and proj.skill_packs and not state.get("skills"):
+            if proj and proj.skill_packs:
                 project_skills = [s.strip() for s in proj.skill_packs.split(",") if s.strip()]
-                snapshot["project"]["skills"] = project_skills
+                if project_skills:
+                    snapshot["project"]["skills"] = project_skills
 
             for model in (WorldSetting, Character, Item):
                 rows = (await db.execute(select(model).where(model.project_id == pid))).scalars().all()
@@ -89,8 +90,12 @@ async def retrieve_context(state: NovelState) -> dict:
         logger.warning(f"retrieve_context failed: {e}")
     evs.append(events.node_end("retrieve_context"))
     ret: dict = {"settings_snapshot": snapshot, "knowledge": knowledge, "events": evs}
-    if "project_skills" in locals() and project_skills:
-        ret["skills"] = project_skills
+    if "project_skills" in locals():
+        from app.agents.nodes.common import merge_skills
+
+        merged = merge_skills(state.get("skills"), project_skills)
+        if merged:
+            ret["skills"] = merged
     return ret
 
 
